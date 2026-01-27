@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
+// TODO: Re-enable sign in/sign up links when ready
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -62,11 +63,11 @@ export function Navbar() {
             </DropdownMenu>
           ) : (
             <div className="flex items-center gap-2">
-              <Button variant="ghost" asChild>
-                <Link href="/login">Sign in</Link>
+              <Button variant="ghost" disabled>
+                Sign in
               </Button>
-              <Button asChild>
-                <Link href="/signup">Sign up</Link>
+              <Button disabled>
+                Sign up
               </Button>
             </div>
           )}
