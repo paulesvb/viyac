@@ -1,36 +1,163 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Viyac
+
+A modern web application with public and authenticated content, built with Next.js 15, Firebase Auth, and Tailwind CSS.
+
+## Features
+
+- **Authentication**: Email/password and Google sign-in via Firebase Auth
+- **Protected Routes**: Middleware-based route protection
+- **Modern UI**: Tailwind CSS with shadcn/ui components
+- **TypeScript**: Full type safety throughout
+
+## Tech Stack
+
+- [Next.js 15](https://nextjs.org/) with App Router
+- [React 19](https://react.dev/)
+- [TypeScript](https://www.typescriptlang.org/)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [shadcn/ui](https://ui.shadcn.com/)
+- [Firebase](https://firebase.google.com/) (Auth + Firestore)
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Node.js 20+
+- A Firebase project with Authentication enabled
+
+### Setup
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/viyac.git
+   cd viyac
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Configure Firebase:
+   - Go to [Firebase Console](https://console.firebase.google.com/)
+   - Create a new project or use an existing one
+   - Enable Authentication (Email/Password and Google providers)
+   - Go to Project Settings > General > Your apps
+   - Copy the Firebase config values
+
+4. Create `.env.local` from the example:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+5. Fill in your Firebase credentials in `.env.local`:
+   ```
+   NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
+   NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+   NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+   NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+   ```
+
+6. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+7. Open [http://localhost:3000](http://localhost:3000)
+
+## Project Structure
+
+```
+src/
+├── app/                    # Next.js App Router pages
+│   ├── layout.tsx          # Root layout with providers
+│   ├── page.tsx            # Landing page (public)
+│   ├── login/page.tsx      # Login page
+│   ├── signup/page.tsx     # Signup page
+│   └── dashboard/page.tsx  # Dashboard (protected)
+├── components/
+│   ├── ui/                 # shadcn/ui components
+│   ├── Navbar.tsx          # Navigation bar
+│   └── AuthForm.tsx        # Login/signup form
+├── context/
+│   └── AuthContext.tsx     # Firebase auth context
+├── lib/
+│   ├── firebase.ts         # Firebase initialization
+│   └── utils.ts            # Utility functions
+└── middleware.ts           # Route protection middleware
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Deployment to Vercel
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Option 1: Vercel Dashboard (Recommended)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Push your code to GitHub
+2. Go to [vercel.com](https://vercel.com) and sign in
+3. Click "Add New Project"
+4. Import your GitHub repository
+5. Add environment variables:
+   - Go to Settings > Environment Variables
+   - Add all variables from `.env.local`
+6. Deploy!
 
-## Learn More
+### Option 2: Vercel CLI
 
-To learn more about Next.js, take a look at the following resources:
+1. Install Vercel CLI:
+   ```bash
+   npm i -g vercel
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+2. Deploy:
+   ```bash
+   vercel
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+3. Add environment variables:
+   ```bash
+   vercel env add NEXT_PUBLIC_FIREBASE_API_KEY
+   # Repeat for all variables
+   ```
 
-## Deploy on Vercel
+4. Redeploy with environment variables:
+   ```bash
+   vercel --prod
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Environment Variables for Vercel
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Add these in your Vercel project settings:
+
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase API key |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase auth domain |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firebase project ID |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Firebase storage bucket |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Firebase messaging sender ID |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase app ID |
+
+## Firebase Setup
+
+### Enable Authentication Providers
+
+1. Go to Firebase Console > Authentication > Sign-in method
+2. Enable **Email/Password**
+3. Enable **Google** (requires OAuth consent screen setup)
+
+### Configure Authorized Domains
+
+1. Go to Authentication > Settings > Authorized domains
+2. Add your Vercel deployment URL (e.g., `your-app.vercel.app`)
+
+## Scripts
+
+- `npm run dev` - Start development server with Turbopack
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
+
+## License
+
+MIT
