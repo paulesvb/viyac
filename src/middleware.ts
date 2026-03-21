@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+// Public routes (always accessible without auth)
+const publicPrefixes = ['/legal'];
+
 // Routes that require authentication
 const protectedRoutes = ['/dashboard', '/profile', '/settings'];
 
@@ -9,6 +12,10 @@ const authRoutes = ['/login', '/signup'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (publicPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    return NextResponse.next();
+  }
   
   // Check for auth session cookie (set by Firebase client-side)
   // Note: This is a basic check. For production, consider using Firebase Admin SDK
