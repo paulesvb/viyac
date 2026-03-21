@@ -15,13 +15,16 @@ export default function LegalPage() {
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Intellectual Property & AI Disclosure</CardTitle>
+            <CardTitle>Creative Attribution & Rights</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="min-h-56 rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
-            All instrumental compositions, arrangements, and performances featured as "Demos" on this site are 100% human-authored and owned by Viyac.
+            The core of the VIYAC sound—including all instrumental compositions, arrangements, and musical performances—is 100% human-authored.
             <br />
-            To explore creative possibilities, some tracks may feature vocal layers or "Covers" generated using Suno AI. Viyac holds full commercial rights to these recordings under a professional license. These AI-assisted versions are intended for "Phase 1" conceptual demonstration and do not represent the final human-led master recordings.
+            <br />
+            In the spirit of sonic exploration, select recordings feature vocal layers or alternative interpretations developed via Suno AI. Viyac maintains full commercial ownership of these recordings under a professional license. These works represent the intersection of traditional musicianship and emerging synthetic technologies.
+            <br />
+            <br />
             <br />
             All Rights Reserved.
             </div>
@@ -30,13 +33,17 @@ export default function LegalPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Divulgación de Propiedad Intelectual e IA</CardTitle>
+            <CardTitle>Atribución Creativa y Derecho</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="min-h-56 rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
-            Todas las composiciones instrumentales, arreglos e interpretaciones presentadas como "Demos" en este sitio son 100% de autoría humana y propiedad de Viyac.
+            La esencia del sonido de VIYAC—incluyendo todas las composiciones instrumentales, arreglos e interpretaciones musicales—es 100% de autoría humana.
             <br />
-            Para explorar posibilidades creativas, algunas pistas pueden incluir capas vocales o "Covers" generados mediante Suno AI. Viyac posee los derechos comerciales totales de estas grabaciones bajo una licencia profesional. Estas versiones asistidas por IA están destinadas a la demostración conceptual de la "Fase 1" y no representan las grabaciones maestras (masters) finales lideradas por humanos.
+            <br />
+            Como parte de una exploración sonora continua, algunas grabaciones presentan capas vocales o interpretaciones alternativas desarrolladas mediante Suno AI. Viyac mantiene la propiedad comercial total de estas grabaciones bajo una licencia profesional. Estas obras representan la intersección entre la música tradicional y las tecnologías sintéticas emergentes.
+            <br />
+            <br />
+            <br />
             <br />
             Todos los derechos reservados.
             </div>
