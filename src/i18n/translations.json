@@ -4,11 +4,23 @@
     "es": "Bienvenido"
   },
   "legalDisclaimer": {
-    "en": "Legal disclaimer",
-    "es": "Aviso legal"
+    "en": "Aviso legal / Legal disclaimer",
+    "es": "Aviso legal / Legal disclaimer"
   },
   "comingSoon": {
     "en": "Coming soon",
     "es": "Proximamente"
+  },
+  "legalSection2Title": {
+    "en": "Acceso al \"Inner Circle\" y Privacidad / \"Inner Circle\" Access & Privacy",
+    "es": "Acceso al \"Inner Circle\" y Privacidad / \"Inner Circle\" Access & Privacy"
+  },
+  "legalSection3Title": {
+    "en": "Limitación de Responsabilidad / Limitation of Liability",
+    "es": "Limitación de Responsabilidad / Limitation of Liability"
+  },
+  "legalSection4Title": {
+    "en": "Contacto Legal / Legal Contact",
+    "es": "Contacto Legal / Legal Contact"
   }
 }
