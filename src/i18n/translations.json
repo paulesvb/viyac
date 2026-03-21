@@ -1,0 +1,14 @@
+{
+  "welcome": {
+    "en": "Welcome",
+    "es": "Bienvenido"
+  },
+  "legalDisclaimer": {
+    "en": "Legal disclaimer",
+    "es": "Aviso legal"
+  },
+  "comingSoon": {
+    "en": "Coming soon",
+    "es": "Proximamente"
+  }
+}

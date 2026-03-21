@@ -1,10 +1,15 @@
+'use client';
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function LegalPage() {
+  const legalTitle = useTranslation("legalDisclaimer");
+
   return (
     <div className="container mx-auto max-w-5xl px-4 py-10">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold">Legal Disclaimer</h1>
+        <h1 className="text-3xl font-bold">{legalTitle}</h1>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
