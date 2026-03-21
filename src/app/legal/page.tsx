@@ -5,9 +5,6 @@ export default function LegalPage() {
     <div className="container mx-auto max-w-5xl px-4 py-10">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Legal Disclaimer</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Add your final legal text in both languages below.
-        </p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
