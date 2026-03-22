@@ -1,12 +1,12 @@
 'use client';
 
-import { useAuth } from '@/context/AuthContext';
+import { useUser } from '@clerk/nextjs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function DashboardPage() {
-  const { user, loading } = useAuth();
+  const { user, isLoaded } = useUser();
 
-  if (loading) {
+  if (!isLoaded) {
     return (
       <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
@@ -17,7 +17,7 @@ export default function DashboardPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
-      
+
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
@@ -28,18 +28,18 @@ export default function DashboardPage() {
             <div className="space-y-2">
               <p className="text-sm">
                 <span className="text-muted-foreground">Email:</span>{' '}
-                {user?.email}
+                {user?.primaryEmailAddress?.emailAddress}
               </p>
-              {user?.displayName && (
+              {user?.fullName && (
                 <p className="text-sm">
                   <span className="text-muted-foreground">Name:</span>{' '}
-                  {user.displayName}
+                  {user.fullName}
                 </p>
               )}
               <p className="text-sm">
                 <span className="text-muted-foreground">User ID:</span>{' '}
                 <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                  {user?.uid}
+                  {user?.id}
                 </code>
               </p>
             </div>
@@ -54,7 +54,7 @@ export default function DashboardPage() {
           <CardContent>
             <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
               <li>Add more protected routes</li>
-              <li>Connect to Firestore for data</li>
+              <li>Connect a database for data</li>
               <li>Customize the UI</li>
               <li>Deploy to Vercel</li>
             </ul>
@@ -68,8 +68,8 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              This page is protected by middleware. Unauthenticated users 
-              are redirected to the login page.
+              This page is protected by Clerk middleware. Unauthenticated users
+              are redirected to sign in.
             </p>
           </CardContent>
         </Card>

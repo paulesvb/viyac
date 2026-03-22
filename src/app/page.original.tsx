@@ -11,7 +11,7 @@ export default function Home() {
         </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mb-8">
           A modern web application with secure authentication, 
-          built with Next.js, Firebase, and Tailwind CSS.
+          built with Next.js, Clerk, and Tailwind CSS.
         </p>
         <div className="flex gap-4">
           <Button asChild size="lg">
@@ -30,7 +30,7 @@ export default function Home() {
           <div className="grid md:grid-cols-3 gap-8">
             <FeatureCard
               title="Secure Authentication"
-              description="Email/password and Google sign-in powered by Firebase Auth."
+              description="Authentication powered by Clerk (configure providers in the Clerk dashboard)."
             />
             <FeatureCard
               title="Protected Routes"
