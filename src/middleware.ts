@@ -10,6 +10,11 @@ const isProtectedRoute = createRouteMatcher([
 const isAuthRoute = createRouteMatcher(['/login(.*)', '/signup(.*)']);
 
 export default clerkMiddleware(async (auth, req) => {
+  // Clerk webhooks must not go through session/auth handling — Svix calls this with no user cookie.
+  if (req.nextUrl.pathname.startsWith('/api/webhooks')) {
+    return NextResponse.next();
+  }
+
   if (isProtectedRoute(req)) {
     await auth.protect();
   }
