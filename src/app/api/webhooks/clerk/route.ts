@@ -76,14 +76,22 @@ export async function POST(req: Request) {
 
   const displayName = getDisplayName(event.data, email);
 
+  /** PostgREST only accepts schemas listed under Supabase → Settings → API → Exposed schemas (default: public, graphql_public). */
+  const profilesSchema = process.env.SUPABASE_PROFILES_SCHEMA ?? 'public';
+
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { error } = await supabase
-    .schema('api')
-    .from('profiles')
-    .upsert({ id: event.data.id, email, display_name: displayName }, { onConflict: 'id' });
+  const profilesTable =
+    profilesSchema === 'public'
+      ? supabase.from('profiles')
+      : supabase.schema(profilesSchema).from('profiles');
+
+  const { error } = await profilesTable.upsert(
+    { id: event.data.id, email, display_name: displayName },
+    { onConflict: 'id' }
+  );
 
   if (error) {
     console.error('[clerk webhook] Supabase error:', error);
