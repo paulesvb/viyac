@@ -41,6 +41,17 @@ function extractProviders(
   return Array.from(new Set(providers.length ? providers : ['email']));
 }
 
+function getPreferredProvider(
+  externalAccounts: ClerkUserCreatedEvent['data']['external_accounts']
+): string {
+  const accounts = externalAccounts ?? [];
+  if (!accounts.length) return 'email';
+
+  // Heuristic: Clerk commonly appends newly linked providers to the end.
+  // This better reflects "latest provider used/linked" than taking index 0.
+  return normalizeProvider(accounts[accounts.length - 1]?.provider);
+}
+
 export async function POST(req: Request) {
   const signingSecret = process.env.CLERK_WEBHOOK_SIGNING_SECRET;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -96,7 +107,7 @@ export async function POST(req: Request) {
 
   const displayName = getDisplayName(event.data, email);
   const providers = extractProviders(external_accounts);
-  const providerName = providers[0];
+  const providerName = getPreferredProvider(external_accounts);
 
   /** PostgREST only accepts schemas listed under Supabase → Settings → API → Exposed schemas (default: public, graphql_public). */
   const profilesSchema = process.env.SUPABASE_PROFILES_SCHEMA ?? 'public';
