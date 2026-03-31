@@ -16,6 +16,9 @@ type ClerkUserCreatedEvent = {
       id: string;
       email_address: string;
     }>;
+    external_accounts?: Array<{
+      provider?: string | null;
+    }> | null;
   };
 };
 
@@ -64,10 +67,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true, ignored: event.type }, { status: 200 });
   }
 
-  const primaryEmail = event.data.email_addresses.find(
-    (email) => email.id === event.data.primary_email_address_id
+  const { id, email_addresses, external_accounts, primary_email_address_id } = event.data;
+
+  const primaryEmail = email_addresses.find(
+    (email) => email.id === primary_email_address_id
   );
-  const fallbackEmail = event.data.email_addresses[0];
+  const fallbackEmail = email_addresses[0];
   const email = primaryEmail?.email_address ?? fallbackEmail?.email_address;
 
   if (!email) {
@@ -75,6 +80,8 @@ export async function POST(req: Request) {
   }
 
   const displayName = getDisplayName(event.data, email);
+  const primaryProvider = external_accounts?.[0]?.provider || 'email';
+  const providerName = primaryProvider.replace('oauth_', '');
 
   /** PostgREST only accepts schemas listed under Supabase → Settings → API → Exposed schemas (default: public, graphql_public). */
   const profilesSchema = process.env.SUPABASE_PROFILES_SCHEMA ?? 'public';
@@ -89,7 +96,7 @@ export async function POST(req: Request) {
       : supabase.schema(profilesSchema).from('profiles');
 
   const { error } = await profilesTable.upsert(
-    { id: event.data.id, email, display_name: displayName },
+    { id, email, display_name: displayName, auth_provider: providerName },
     { onConflict: 'id' }
   );
 
