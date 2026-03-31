@@ -121,13 +121,24 @@ export async function POST(req: Request) {
       ? supabase.from('profiles')
       : supabase.schema(profilesSchema).from('profiles');
 
+  // Preserve previously known providers; some Clerk events may only include a subset.
+  const { data: existingProfile } = await profilesTable
+    .select('auth_providers')
+    .eq('id', id)
+    .maybeSingle();
+
+  const existingProviders = Array.isArray(existingProfile?.auth_providers)
+    ? (existingProfile.auth_providers as string[])
+    : [];
+  const mergedProviders = Array.from(new Set([...existingProviders, ...providers]));
+
   const { error } = await profilesTable.upsert(
     {
       id,
       email,
       display_name: displayName,
       auth_provider: providerName,
-      auth_providers: providers,
+      auth_providers: mergedProviders,
     },
     { onConflict: 'id' }
   );
