@@ -123,7 +123,7 @@ export async function POST(req: Request) {
 
   // Preserve previously known providers; some Clerk events may only include a subset.
   const { data: existingProfile } = await profilesTable
-    .select('auth_providers')
+    .select('auth_provider, auth_providers')
     .eq('id', id)
     .maybeSingle();
 
@@ -131,13 +131,18 @@ export async function POST(req: Request) {
     ? (existingProfile.auth_providers as string[])
     : [];
   const mergedProviders = Array.from(new Set([...existingProviders, ...providers]));
+  const hasNewProvider = mergedProviders.length > existingProviders.length;
+  const resolvedPrimaryProvider =
+    event.type === 'user.created' || hasNewProvider
+      ? providerName
+      : (existingProfile?.auth_provider ?? providerName);
 
   const { error } = await profilesTable.upsert(
     {
       id,
       email,
       display_name: displayName,
-      auth_provider: providerName,
+      auth_provider: resolvedPrimaryProvider,
       auth_providers: mergedProviders,
     },
     { onConflict: 'id' }
