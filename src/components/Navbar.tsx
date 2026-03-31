@@ -8,7 +8,7 @@ export function Navbar() {
   const { isSignedIn, isLoaded } = useAuth();
 
   return (
-    <nav className="border-b bg-background">
+    <nav className="relative z-50 border-b bg-background">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="text-xl font-bold">
           Viyac

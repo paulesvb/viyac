@@ -1,14 +1,27 @@
 'use client';
 
 import { useUser } from '@clerk/nextjs';
+import { VaultPlayer } from '@/components/VaultPlayer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { getPublicAssetUrl } from '@/lib/storage';
+
+function dashboardPlayerBgUrl(): string {
+  const path = process.env.NEXT_PUBLIC_DASHBOARD_VAULT_BG_PATH?.trim();
+  if (!path) return 'https://picsum.photos/seed/viyac-dashboard/1920/1080';
+  try {
+    return getPublicAssetUrl(path);
+  } catch {
+    return 'https://picsum.photos/seed/viyac-dashboard/1920/1080';
+  }
+}
 
 export default function DashboardPage() {
   const { user, isLoaded } = useUser();
+  const trackPath = process.env.NEXT_PUBLIC_DASHBOARD_VAULT_TRACK_PATH?.trim();
 
   if (!isLoaded) {
     return (
-      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
       </div>
     );
@@ -16,9 +29,9 @@ export default function DashboardPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
+      <h1 className="mb-8 text-3xl font-bold">Dashboard</h1>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="mb-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Welcome!</CardTitle>
@@ -38,7 +51,7 @@ export default function DashboardPage() {
               )}
               <p className="text-sm">
                 <span className="text-muted-foreground">User ID:</span>{' '}
-                <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                <code className="rounded bg-muted px-1 py-0.5 text-xs">
                   {user?.id}
                 </code>
               </p>
@@ -52,7 +65,7 @@ export default function DashboardPage() {
             <CardDescription>Next steps for your app</CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+            <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
               <li>Add more protected routes</li>
               <li>Connect a database for data</li>
               <li>Customize the UI</li>
@@ -74,6 +87,44 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <section className="space-y-4" aria-labelledby="vault-player-heading">
+        <h2 id="vault-player-heading" className="text-xl font-semibold tracking-tight">
+          Vault player
+        </h2>
+
+        {trackPath ? (
+          <VaultPlayer
+            variant="embedded"
+            trackData={{
+              bg_image_url: dashboardPlayerBgUrl(),
+              content_type: 'video',
+              track_path: trackPath,
+              title: 'Preview',
+              description_en: 'Signed-in playback from the vault bucket.',
+            }}
+          />
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">No track configured</CardTitle>
+              <CardDescription>
+                Add a vault path so the player can request a signed URL.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-muted-foreground">
+              <p>
+                Example in <code className="rounded bg-muted px-1 py-0.5 text-xs">.env.local</code>:
+              </p>
+              <pre className="overflow-x-auto rounded-lg bg-muted p-3 text-xs text-foreground">
+                {`NEXT_PUBLIC_DASHBOARD_VAULT_TRACK_PATH=your-folder/master.m3u8
+# Optional — public assets bucket path for the blurred background
+# NEXT_PUBLIC_DASHBOARD_VAULT_BG_PATH=backgrounds/dashboard.jpg`}
+              </pre>
+            </CardContent>
+          </Card>
+        )}
+      </section>
     </div>
   );
 }
