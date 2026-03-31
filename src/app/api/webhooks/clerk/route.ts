@@ -5,7 +5,7 @@ import { Webhook } from 'svix';
 export const runtime = 'nodejs';
 
 type ClerkUserCreatedEvent = {
-  type: 'user.created';
+  type: 'user.created' | 'user.updated';
   data: {
     id: string;
     username: string | null;
@@ -27,6 +27,18 @@ function getDisplayName(data: ClerkUserCreatedEvent['data'], email: string): str
   if (fullName) return fullName;
   if (data.username) return data.username;
   return email.split('@')[0] ?? data.id;
+}
+
+function normalizeProvider(provider?: string | null): string {
+  if (!provider) return 'email';
+  return provider.replace(/^oauth_/, '');
+}
+
+function extractProviders(
+  externalAccounts: ClerkUserCreatedEvent['data']['external_accounts']
+): string[] {
+  const providers = (externalAccounts ?? []).map((acc) => normalizeProvider(acc.provider));
+  return Array.from(new Set(providers.length ? providers : ['email']));
 }
 
 export async function POST(req: Request) {
@@ -63,7 +75,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid Svix signature.' }, { status: 400 });
   }
 
-  if (event.type !== 'user.created') {
+  if (event.type !== 'user.created' && event.type !== 'user.updated') {
     return NextResponse.json({ received: true, ignored: event.type }, { status: 200 });
   }
 
@@ -76,12 +88,15 @@ export async function POST(req: Request) {
   const email = primaryEmail?.email_address ?? fallbackEmail?.email_address;
 
   if (!email) {
-    return NextResponse.json({ error: 'No email available on user.created event.' }, { status: 400 });
+    return NextResponse.json(
+      { error: `No email available on ${event.type} event.` },
+      { status: 400 }
+    );
   }
 
   const displayName = getDisplayName(event.data, email);
-  const primaryProvider = external_accounts?.[0]?.provider || 'email';
-  const providerName = primaryProvider.replace('oauth_', '');
+  const providers = extractProviders(external_accounts);
+  const providerName = providers[0];
 
   /** PostgREST only accepts schemas listed under Supabase → Settings → API → Exposed schemas (default: public, graphql_public). */
   const profilesSchema = process.env.SUPABASE_PROFILES_SCHEMA ?? 'public';
@@ -96,7 +111,13 @@ export async function POST(req: Request) {
       : supabase.schema(profilesSchema).from('profiles');
 
   const { error } = await profilesTable.upsert(
-    { id, email, display_name: displayName, auth_provider: providerName },
+    {
+      id,
+      email,
+      display_name: displayName,
+      auth_provider: providerName,
+      auth_providers: providers,
+    },
     { onConflict: 'id' }
   );
 
