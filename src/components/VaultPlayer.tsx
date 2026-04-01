@@ -57,6 +57,14 @@ function isParsedWaveform(w: WaveformLoadState): w is ParsedWaveform {
   return w !== null && w !== 'loading' && w !== 'error';
 }
 
+function resolveAbsoluteMediaUrl(href: string): string {
+  try {
+    return new URL(href.trim(), window.location.href).href;
+  } catch {
+    return href.trim();
+  }
+}
+
 function buildPlaceholderPeaks(length: number): Float32Array {
   const out = new Float32Array(length);
   for (let i = 0; i < length; i++) {
@@ -442,48 +450,164 @@ export function VaultPlayer({
     };
   }, [playUrl, hlsOnAudio, track_path]);
 
+  const playMedia = useCallback(() => {
+    const media = mediaRef.current;
+    if (!media) return;
+    const d = media.duration;
+    const nearEnd =
+      Number.isFinite(d) && d > 0 && media.currentTime >= d - 0.25;
+    const atEnd = media.ended || nearEnd;
+
+    if (atEnd) {
+      const hls = hlsRef.current;
+      if (hls) {
+        try {
+          hls.startLoad(0);
+        } catch {
+          /* ignore */
+        }
+      }
+      media.currentTime = 0;
+      const play = () => {
+        void media.play().catch(() => {});
+      };
+      const onSeeked = () => {
+        clearTimeout(fallback);
+        play();
+      };
+      media.addEventListener('seeked', onSeeked, { once: true });
+      const fallback = window.setTimeout(() => {
+        media.removeEventListener('seeked', onSeeked);
+        play();
+      }, 300);
+      return;
+    }
+
+    void media.play().catch(() => {});
+  }, []);
+
+  const pauseMedia = useCallback(() => {
+    mediaRef.current?.pause();
+  }, []);
+
   const togglePlay = useCallback(() => {
     const media = mediaRef.current;
     if (!media) return;
-    if (media.paused) {
+    if (media.paused) playMedia();
+    else pauseMedia();
+  }, [playMedia, pauseMedia]);
+
+  const lockScreenTitle = title?.trim() || 'Track';
+  const lockScreenArtworkHref = useMemo(() => {
+    const raw = thumbnail_url?.trim() || bg_image_url?.trim();
+    if (!raw) return null;
+    if (typeof window === 'undefined') return raw;
+    return resolveAbsoluteMediaUrl(raw);
+  }, [thumbnail_url, bg_image_url]);
+
+  /** Lock screen / Control Center / CarPlay — tie remote controls to HLS element, not the muted hero video. */
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const media = mediaRef.current;
+    if (!media || !mediaReady) return;
+
+    const ms = navigator.mediaSession;
+
+    const syncPositionState = () => {
+      if (typeof ms.setPositionState !== 'function') return;
       const d = media.duration;
-      const nearEnd =
-        Number.isFinite(d) && d > 0 && media.currentTime >= d - 0.25;
-      const atEnd = media.ended || nearEnd;
-
-      if (atEnd) {
-        // Native HLS (Safari): seek + play is enough. hls.js + MSE (Chrome) often needs
-        // `startLoad(0)` and must not call `play()` until the seek completes — otherwise
-        // `play()` is interrupted or ignored.
-        const hls = hlsRef.current;
-        if (hls) {
-          try {
-            hls.startLoad(0);
-          } catch {
-            /* ignore */
-          }
-        }
-        media.currentTime = 0;
-        const play = () => {
-          void media.play().catch(() => {});
-        };
-        const onSeeked = () => {
-          clearTimeout(fallback);
-          play();
-        };
-        media.addEventListener('seeked', onSeeked, { once: true });
-        const fallback = window.setTimeout(() => {
-          media.removeEventListener('seeked', onSeeked);
-          play();
-        }, 300);
-        return;
+      if (!Number.isFinite(d) || d <= 0) return;
+      const pos = Math.min(Math.max(0, media.currentTime), d);
+      try {
+        ms.setPositionState({
+          duration: d,
+          playbackRate: media.playbackRate || 1,
+          position: pos,
+        });
+      } catch {
+        /* Safari throws if state is invalid */
       }
+    };
 
-      void media.play().catch(() => {});
-    } else {
-      media.pause();
+    try {
+      ms.metadata = new MediaMetadata({
+        title: lockScreenTitle,
+        artist: '',
+        artwork: lockScreenArtworkHref
+          ? [
+              {
+                src: lockScreenArtworkHref,
+                sizes: '512x512',
+                type: 'image/jpeg',
+              },
+            ]
+          : [],
+      });
+    } catch {
+      try {
+        ms.metadata = new MediaMetadata({
+          title: lockScreenTitle,
+          artist: '',
+        });
+      } catch {
+        /* ignore */
+      }
     }
-  }, []);
+
+    const skipSeconds = 15;
+
+    ms.setActionHandler?.('play', () => {
+      playMedia();
+    });
+    ms.setActionHandler?.('pause', () => {
+      pauseMedia();
+    });
+    ms.setActionHandler?.('seekbackward', (e) => {
+      const delta = e.seekOffset ?? skipSeconds;
+      media.currentTime = Math.max(0, media.currentTime - delta);
+      syncPositionState();
+    });
+    ms.setActionHandler?.('seekforward', (e) => {
+      const delta = e.seekOffset ?? skipSeconds;
+      const end = Number.isFinite(media.duration) ? media.duration : media.currentTime + delta;
+      media.currentTime = Math.min(end, media.currentTime + delta);
+      syncPositionState();
+    });
+    ms.setActionHandler?.('seekto', (e) => {
+      if (e.seekTime == null || !Number.isFinite(e.seekTime)) return;
+      const d = media.duration;
+      const t = Number.isFinite(d)
+        ? Math.min(Math.max(0, e.seekTime), d)
+        : Math.max(0, e.seekTime);
+      media.currentTime = t;
+      syncPositionState();
+    });
+
+    const onTime = () => syncPositionState();
+    media.addEventListener('timeupdate', onTime);
+    media.addEventListener('durationchange', syncPositionState);
+    media.addEventListener('ratechange', syncPositionState);
+    syncPositionState();
+
+    return () => {
+      media.removeEventListener('timeupdate', onTime);
+      media.removeEventListener('durationchange', syncPositionState);
+      media.removeEventListener('ratechange', syncPositionState);
+      ms.setActionHandler?.('play', null);
+      ms.setActionHandler?.('pause', null);
+      ms.setActionHandler?.('seekbackward', null);
+      ms.setActionHandler?.('seekforward', null);
+      ms.setActionHandler?.('seekto', null);
+      ms.metadata = null;
+    };
+  }, [
+    mediaReady,
+    track_path,
+    lockScreenTitle,
+    lockScreenArtworkHref,
+    playMedia,
+    pauseMedia,
+  ]);
 
   const description =
     lang === 'en' ? description_en ?? description_es : description_es ?? description_en;
@@ -572,12 +696,13 @@ export function VaultPlayer({
                     <video
                       ref={bgVideoRef}
                       key={`${track_path}:${vaultBgVideoSrc}`}
-                      className="vault-hero-video absolute inset-0 z-0 h-full w-full object-cover object-center"
+                      className="vault-hero-video pointer-events-none absolute inset-0 z-0 h-full w-full object-cover object-center"
                       src={vaultBgVideoSrc}
                       muted
                       loop
                       playsInline
                       preload="auto"
+                      disableRemotePlayback
                       onError={() => setVaultBgVideoError(true)}
                     />
                   ) : (
