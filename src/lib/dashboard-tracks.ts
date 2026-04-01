@@ -12,13 +12,22 @@ function envFallbackTracks(): DashboardTrack[] {
   const path = process.env.NEXT_PUBLIC_DASHBOARD_VAULT_TRACK_PATH?.trim();
   if (!path) return [];
   const wf = process.env.NEXT_PUBLIC_DASHBOARD_WAVEFORM_JSON_PATH?.trim();
+  const wfVault =
+    process.env.NEXT_PUBLIC_DASHBOARD_VAULT_WAVEFORM_PATH?.trim();
+  const bgVideo =
+    process.env.NEXT_PUBLIC_DASHBOARD_VAULT_BACKGROUND_VIDEO_PATH?.trim();
   return [
     {
       slug: 'preview',
       title: 'Preview',
       track_path: path,
       featured: true,
-      ...(wf ? { waveform_json_path: wf } : {}),
+      ...(wfVault
+        ? { waveform_json_vault_path: wfVault }
+        : wf
+          ? { waveform_json_path: wf }
+          : {}),
+      ...(bgVideo ? { vault_background_video_path: bgVideo } : {}),
       description_en: 'Signed-in playback from the vault bucket.',
     },
   ];
@@ -81,6 +90,8 @@ function resolveOptionalAssetUrl(
 
 /** Props for `VaultPlayer` — resolves public asset paths to URLs. */
 export function toVaultTrackData(track: DashboardTrack): VaultTrackData {
+  const wfVault = track.waveform_json_vault_path?.trim();
+  const wfPublic = track.waveform_json_path?.trim();
   return {
     bg_image_url: resolveBgImageUrl(track),
     content_type: track.content_type ?? 'video',
@@ -89,8 +100,13 @@ export function toVaultTrackData(track: DashboardTrack): VaultTrackData {
     title: track.title,
     description_en: track.description_en,
     description_es: track.description_es,
-    ...(track.waveform_json_path?.trim()
-      ? { waveform_json_path: track.waveform_json_path.trim() }
+    ...(wfVault
+      ? { waveform_json_vault_path: wfVault }
+      : wfPublic
+        ? { waveform_json_path: wfPublic }
+        : {}),
+    ...(track.vault_background_video_path?.trim()
+      ? { vault_background_video_path: track.vault_background_video_path.trim() }
       : {}),
   };
 }

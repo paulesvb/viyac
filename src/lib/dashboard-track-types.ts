@@ -10,6 +10,10 @@ export type DashboardTrack = {
   description_es?: string;
   /** Public `assets` key or full URL to waveform.json */
   waveform_json_path?: string;
+  /** Vault key for waveform.json (signed URL); overrides public waveform when set */
+  waveform_json_vault_path?: string;
+  /** Vault key for looping background MP4 (Vault player cinematic layout) */
+  vault_background_video_path?: string;
   /** Public `assets` key or full URL for blurred background */
   bg_image_path?: string;
   /** Optional; audio layout only — full URL or `assets` key */

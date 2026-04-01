@@ -16,10 +16,12 @@ import {
   parseWaveformJson,
   type ParsedWaveform,
 } from '@/lib/waveform-json';
+import { fetchVaultSignedUrl } from '@/lib/vault-signed-url-client';
 import { resolvePublicAssetsUrl } from '@/lib/storage';
 import { vaultStreamUrl } from '@/lib/vault-stream';
 
 export type VaultTrackData = {
+  /** Fallback still when no vault background video */
   bg_image_url: string;
   content_type: 'video' | 'audio';
   /** Vault bucket path to HLS entry (e.g. `folder/index.m3u8`) — streamed via `/api/vault/stream/...` */
@@ -28,10 +30,13 @@ export type VaultTrackData = {
   title?: string;
   description_en?: string;
   description_es?: string;
-  /** Public `assets` key or full `https://...` URL to `waveform.json` (peaks + optional duration) */
+  /** Public `assets` key or full URL to `waveform.json` */
   waveform_json_path?: string;
-  /** Same as path; takes precedence when both are set */
   waveform_json_url?: string;
+  /** Vault object key for `waveform.json` — signed URL fetched at runtime (takes precedence over public paths). */
+  waveform_json_vault_path?: string;
+  /** Vault object key for looping background MP4 (4K); signed URL + top hero video. HLS attaches to `<audio>`. */
+  vault_background_video_path?: string;
 };
 
 type VaultPlayerProps = {
@@ -52,7 +57,6 @@ function isParsedWaveform(w: WaveformLoadState): w is ParsedWaveform {
   return w !== null && w !== 'loading' && w !== 'error';
 }
 
-/** Fallback when no JSON or parse fails — must match WaveSurfer peak range */
 function buildPlaceholderPeaks(length: number): Float32Array {
   const out = new Float32Array(length);
   for (let i = 0; i < length; i++) {
@@ -67,19 +71,20 @@ function buildPlaceholderPeaks(length: number): Float32Array {
   return out;
 }
 
-/** ~2k bins: matches placeholder density; avoids max-pooling 90k+ samples into solid blocks. */
 const WAVEFORM_DISPLAY_BINS = 2048;
 
+/** Neon Cyan → Violet (Vault) */
 const VAULT_WAVESURFER = {
   height: 104,
-  /** cyan → fuchsia (mirror line fill, no bars — reads better for pre-baked peaks) */
-  waveColor: ['#22d3ee', '#d946ef'] as [string, string],
-  progressColor: 'rgba(244, 114, 182, 0.92)',
-  cursorColor: '#ecfeff',
+  waveColor: ['#00f2ff', '#7b2eff'] as [string, string],
+  progressColor: 'rgba(123, 46, 255, 0.88)',
+  cursorColor: '#e0e7ff',
   cursorWidth: 2,
-  /** Slight headroom so the mirrored silhouette does not clip the shell */
   barHeight: 0.9,
 };
+
+const PLAY_BTN_PREMIUM =
+  'rounded-full border border-white/10 bg-zinc-900/90 text-[#00f2ff] shadow-[0_8px_32px_rgba(0,0,0,0.45)] ring-1 ring-white/5 transition hover:border-[#00f2ff]/35 hover:bg-zinc-800/95 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00f2ff]/50';
 
 export function VaultPlayer({
   trackData,
@@ -95,7 +100,18 @@ export function VaultPlayer({
     description_es,
     waveform_json_path,
     waveform_json_url,
+    waveform_json_vault_path,
+    vault_background_video_path,
   } = trackData;
+
+  const vaultWfTrim = waveform_json_vault_path?.trim();
+  const pathTrim = waveform_json_path?.trim();
+  const urlTrim = waveform_json_url?.trim();
+  const wantsWaveformJson = Boolean(vaultWfTrim || pathTrim || urlTrim);
+
+  const cinematic = Boolean(vault_background_video_path?.trim());
+  /** HLS is attached to `<audio>` for vault cinematic layout and for audio-only streams. */
+  const hlsOnAudio = cinematic || content_type === 'audio';
 
   const [streamError, setStreamError] = useState<{
     path: string;
@@ -106,13 +122,18 @@ export function VaultPlayer({
 
   const [lang, setLang] = useState<'en' | 'es'>('en');
 
-  const pathTrim = waveform_json_path?.trim();
-  const urlTrim = waveform_json_url?.trim();
-  const wantsWaveformJson = Boolean(pathTrim || urlTrim);
-
   const [waveformState, setWaveformState] = useState<WaveformLoadState>(() =>
     wantsWaveformJson ? 'loading' : null,
   );
+
+  const [vaultBgVideoError, setVaultBgVideoError] = useState(false);
+  const bgVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  /** Same-origin proxy → signed Supabase URL (matches HLS); avoids cross-origin `<video src>` issues. */
+  const vaultBgVideoSrc = useMemo(() => {
+    if (!cinematic || !vault_background_video_path?.trim()) return null;
+    return vaultStreamUrl(vault_background_video_path.trim());
+  }, [cinematic, vault_background_video_path, track_path]);
 
   useEffect(() => {
     if (!wantsWaveformJson) {
@@ -121,33 +142,68 @@ export function VaultPlayer({
     }
     setWaveformState('loading');
     let cancelled = false;
+
+    const runPublic = (jsonUrl: string) =>
+      fetch(jsonUrl)
+        .then((r) => {
+          if (!r.ok) throw new Error(String(r.status));
+          return r.json() as unknown;
+        })
+        .then((raw) => {
+          const parsed = parseWaveformJson(raw);
+          if (!cancelled) setWaveformState(parsed ?? 'error');
+        });
+
+    if (vaultWfTrim) {
+      void fetchVaultSignedUrl(vaultWfTrim)
+        .then((signedUrl) => fetch(signedUrl))
+        .then((r) => {
+          if (!r.ok) throw new Error(String(r.status));
+          return r.json() as unknown;
+        })
+        .then((raw) => {
+          const parsed = parseWaveformJson(raw);
+          if (!cancelled) setWaveformState(parsed ?? 'error');
+        })
+        .catch(() => {
+          if (!cancelled) setWaveformState('error');
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     let jsonUrl: string;
     try {
       jsonUrl = resolvePublicAssetsUrl(urlTrim ?? pathTrim!);
     } catch {
       setWaveformState('error');
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
-    void fetch(jsonUrl)
-      .then((r) => {
-        if (!r.ok) throw new Error(String(r.status));
-        return r.json() as unknown;
-      })
-      .then((raw) => {
-        const parsed = parseWaveformJson(raw);
-        if (!cancelled) setWaveformState(parsed ?? 'error');
-      })
-      .catch(() => {
-        if (!cancelled) setWaveformState('error');
-      });
+    void runPublic(jsonUrl).catch(() => {
+      if (!cancelled) setWaveformState('error');
+    });
     return () => {
       cancelled = true;
     };
-  }, [wantsWaveformJson, pathTrim, urlTrim, track_path]);
+  }, [
+    wantsWaveformJson,
+    vaultWfTrim,
+    pathTrim,
+    urlTrim,
+    track_path,
+  ]);
+
+  useEffect(() => {
+    if (!cinematic) setVaultBgVideoError(false);
+  }, [cinematic, track_path]);
 
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
   const waveformContainerRef = useRef<HTMLDivElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const recoveringRef = useRef(false);
 
   const [playing, setPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -156,6 +212,36 @@ export function VaultPlayer({
   const mediaReady = readyForPath === track_path;
 
   const playUrl = useMemo(() => vaultStreamUrl(track_path), [track_path]);
+
+  /** Client navigation can reuse this instance — reset so HLS/WaveSurfer do not keep stale metadata. */
+  useEffect(() => {
+    setReadyForPath(null);
+    setDuration(0);
+    setCurrentTime(0);
+    setPlaying(false);
+    setStreamError(null);
+    recoveringRef.current = false;
+  }, [track_path]);
+
+  /** Background loop: paused on first frame until music plays; stays in sync with audio. */
+  useEffect(() => {
+    const el = bgVideoRef.current;
+    if (!el || !vaultBgVideoSrc || !cinematic) return;
+    setVaultBgVideoError(false);
+    el.load();
+    el.pause();
+    el.currentTime = 0;
+  }, [vaultBgVideoSrc, cinematic]);
+
+  useEffect(() => {
+    const el = bgVideoRef.current;
+    if (!el || !cinematic || !vaultBgVideoSrc) return;
+    if (playing) {
+      void el.play().catch(() => {});
+    } else {
+      el.pause();
+    }
+  }, [playing, cinematic, vaultBgVideoSrc]);
 
   useEffect(() => {
     const container = waveformContainerRef.current;
@@ -171,11 +257,14 @@ export function VaultPlayer({
     const peakChannels = useJson
       ? downsamplePeaksForDisplay(waveformState.peaks, WAVEFORM_DISPLAY_BINS)
       : [buildPlaceholderPeaks(WAVEFORM_DISPLAY_BINS)];
-    const waveDuration =
-      useJson && waveformState.duration > 0 ? waveformState.duration : duration;
+    /** Prefer media duration: JSON peaks are often a few seconds short of the real HLS length. */
+    const jsonDur =
+      useJson && waveformState.duration > 0 ? waveformState.duration : 0;
+    const waveDuration = jsonDur > 0 ? Math.max(duration, jsonDur) : duration;
 
     const ws = WaveSurfer.create({
       container,
+      backend: 'MediaElement',
       height: VAULT_WAVESURFER.height,
       waveColor: VAULT_WAVESURFER.waveColor,
       progressColor: VAULT_WAVESURFER.progressColor,
@@ -197,7 +286,7 @@ export function VaultPlayer({
       try {
         ws.setMediaElement(media);
       } catch {
-        /* setMediaElement can throw if graph already wired */
+        /* already wired */
       }
     };
 
@@ -210,9 +299,10 @@ export function VaultPlayer({
       cancelled = true;
       ws.destroy();
     };
+    // Use floored duration so HLS `durationchange` ticks do not destroy/recreate WaveSurfer mid-playback.
   }, [
     mediaReady,
-    duration,
+    duration > 0 ? Math.floor(duration) : 0,
     track_path,
     playUrl,
     waveformState,
@@ -224,6 +314,11 @@ export function VaultPlayer({
 
     const destroyHls = () => {
       if (hlsRef.current) {
+        try {
+          hlsRef.current.detachMedia();
+        } catch {
+          /* ignore */
+        }
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
@@ -232,6 +327,11 @@ export function VaultPlayer({
     destroyHls();
     media.pause();
     media.removeAttribute('src');
+    try {
+      media.load();
+    } catch {
+      /* ignore */
+    }
 
     const onMediaError = () => {
       const code = media.error?.code;
@@ -251,12 +351,44 @@ export function VaultPlayer({
     if (media.canPlayType('application/vnd.apple.mpegurl')) {
       media.src = playUrl;
     } else if (Hls.isSupported()) {
+      // Safari uses native HLS above; this path is Chrome/Firefox/Edge (MSE). Chrome is
+      // much more reliable with the main-thread transmuxer — the worker + MSE path is a
+      // common source of stalls and broken replay after `ended` on `<audio>`.
       const hls = new Hls({
-        enableWorker: true,
+        enableWorker: false,
+        // Wider hole tolerance + more gap nudges — small discontinuities at segment joins are common on MSE.
+        maxBufferHole: 1,
+        nudgeOffset: 0.15,
+        nudgeMaxRetry: 8,
+        highBufferWatchdogPeriod: 1,
       });
       hlsRef.current = hls;
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          try {
+            hls.startLoad(-1);
+            return;
+          } catch {
+            /* fall through to user-facing error */
+          }
+        }
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          if (!recoveringRef.current) {
+            recoveringRef.current = true;
+            try {
+              hls.recoverMediaError();
+              window.setTimeout(() => {
+                recoveringRef.current = false;
+              }, 1200);
+              return;
+            } catch {
+              recoveringRef.current = false;
+            }
+          } else {
+            return;
+          }
+        }
         const message =
           data.type === Hls.ErrorTypes.NETWORK_ERROR
             ? 'Network error while loading the stream.'
@@ -279,12 +411,20 @@ export function VaultPlayer({
     };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
+    const onEnded = () => {
+      setPlaying(false);
+      const d = media.duration;
+      if (Number.isFinite(d) && d > 0) {
+        setCurrentTime(d);
+      }
+    };
 
     media.addEventListener('timeupdate', onTime);
     media.addEventListener('loadedmetadata', onDuration);
     media.addEventListener('durationchange', onDuration);
     media.addEventListener('play', onPlay);
     media.addEventListener('pause', onPause);
+    media.addEventListener('ended', onEnded);
     media.addEventListener('error', onMediaError);
 
     return () => {
@@ -293,18 +433,52 @@ export function VaultPlayer({
       media.removeEventListener('durationchange', onDuration);
       media.removeEventListener('play', onPlay);
       media.removeEventListener('pause', onPause);
+      media.removeEventListener('ended', onEnded);
       media.removeEventListener('error', onMediaError);
       destroyHls();
       media.pause();
       media.removeAttribute('src');
       media.load();
     };
-  }, [playUrl, content_type, track_path]);
+  }, [playUrl, hlsOnAudio, track_path]);
 
   const togglePlay = useCallback(() => {
     const media = mediaRef.current;
     if (!media) return;
     if (media.paused) {
+      const d = media.duration;
+      const nearEnd =
+        Number.isFinite(d) && d > 0 && media.currentTime >= d - 0.25;
+      const atEnd = media.ended || nearEnd;
+
+      if (atEnd) {
+        // Native HLS (Safari): seek + play is enough. hls.js + MSE (Chrome) often needs
+        // `startLoad(0)` and must not call `play()` until the seek completes — otherwise
+        // `play()` is interrupted or ignored.
+        const hls = hlsRef.current;
+        if (hls) {
+          try {
+            hls.startLoad(0);
+          } catch {
+            /* ignore */
+          }
+        }
+        media.currentTime = 0;
+        const play = () => {
+          void media.play().catch(() => {});
+        };
+        const onSeeked = () => {
+          clearTimeout(fallback);
+          play();
+        };
+        media.addEventListener('seeked', onSeeked, { once: true });
+        const fallback = window.setTimeout(() => {
+          media.removeEventListener('seeked', onSeeked);
+          play();
+        }, 300);
+        return;
+      }
+
       void media.play().catch(() => {});
     } else {
       media.pause();
@@ -324,41 +498,53 @@ export function VaultPlayer({
     : 'min-h-[100dvh]';
 
   const waveformShellClass =
-    'min-h-[96px] w-full overflow-hidden rounded-xl border border-cyan-400/25 bg-black/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_28px_-8px_rgba(34,211,238,0.25)]';
+    'min-h-[96px] w-full overflow-hidden rounded-xl border border-[#00f2ff]/20 bg-black/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_28px_-8px_rgba(0,242,255,0.15)]';
 
-  const playButtonClass =
-    'flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-cyan-500 text-zinc-950 shadow-[0_0_24px_-4px_rgba(34,211,238,0.65)] ring-2 ring-cyan-300/40 transition hover:from-cyan-300 hover:to-cyan-400';
+  const playBtnClass = `${PLAY_BTN_PREMIUM} flex shrink-0 items-center justify-center`;
+  /** Keeps play/wave row from shifting when loading copy mounts/unmounts. */
+  const streamStatusRowClass =
+    'flex min-h-[1.375rem] items-center justify-center sm:justify-start';
+
+  const showBackdropImage = !cinematic;
 
   return (
     <div
-      className={`relative w-full overflow-hidden ${shellMin} ${embedded ? 'rounded-2xl ring-1 ring-cyan-500/20' : ''}`}
+      className={`relative w-full overflow-hidden ${shellMin} ${embedded ? 'rounded-2xl ring-1 ring-[#00f2ff]/15' : ''} ${cinematic ? 'bg-zinc-950' : ''}`}
     >
-      <div className={`pointer-events-none ${layer} inset-0 z-0`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={bg_image_url}
-          alt=""
-          className="h-full w-full object-cover"
+      {showBackdropImage ? (
+        <>
+          <div className={`pointer-events-none ${layer} inset-0 z-0`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={bg_image_url}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          </div>
+          <div
+            className={`${layer} inset-0 z-10 backdrop-blur-3xl bg-black/70`}
+            aria-hidden
+          />
+        </>
+      ) : (
+        <div
+          className={`pointer-events-none ${layer} inset-0 z-0 bg-zinc-950`}
+          aria-hidden
         />
-      </div>
-
-      <div
-        className={`${layer} inset-0 z-10 backdrop-blur-3xl bg-black/70`}
-        aria-hidden
-      />
+      )}
 
       <div
         className={`relative z-20 flex ${shellMin} flex-col items-center justify-center ${embedded ? 'p-3 sm:p-4 lg:p-6' : 'p-4 sm:p-8'}`}
       >
         <div
-          className={`w-full border border-cyan-500/30 bg-zinc-950/75 shadow-[0_0_48px_-12px_rgba(34,211,238,0.28)] backdrop-blur-md ${
+          className={`w-full border border-[#00f2ff]/20 bg-zinc-950/80 shadow-[0_0_48px_-12px_rgba(0,242,255,0.12)] backdrop-blur-md ${
             embedded
               ? 'max-w-none rounded-xl p-3 sm:rounded-2xl sm:p-5 lg:p-8'
               : 'max-w-3xl rounded-2xl p-4 sm:p-8'
           }`}
           style={{
             boxShadow:
-              '0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(34,211,238,0.12)',
+              '0 8px 32px rgba(0,0,0,0.55), inset 0 1px 0 rgba(0,242,255,0.08)',
           }}
         >
           {loadError ? (
@@ -369,15 +555,99 @@ export function VaultPlayer({
               Waveform JSON failed to load — showing placeholder shape.
             </p>
           ) : null}
+          {vaultBgVideoError ? (
+            <p className="mb-3 text-center text-xs text-amber-200/90">
+              Background video could not be loaded from the vault.
+            </p>
+          ) : null}
 
           <div
             className="select-none"
             onContextMenu={(e) => e.preventDefault()}
           >
-            {content_type === 'video' ? (
+            {cinematic ? (
               <div className="space-y-4">
-                <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-cyan-500/20 bg-black shadow-[0_0_32px_-10px_rgba(168,85,247,0.2)] ring-1 ring-white/5">
+                <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-black ring-1 ring-white/5">
+                  {vaultBgVideoSrc ? (
+                    <video
+                      ref={bgVideoRef}
+                      key={`${track_path}:${vaultBgVideoSrc}`}
+                      className="vault-hero-video absolute inset-0 z-0 h-full w-full object-cover object-center"
+                      src={vaultBgVideoSrc}
+                      muted
+                      loop
+                      playsInline
+                      preload="auto"
+                      onError={() => setVaultBgVideoError(true)}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-sm text-zinc-400">
+                      {vaultBgVideoError
+                        ? 'Video unavailable'
+                        : 'Loading background…'}
+                    </div>
+                  )}
+                  <div
+                    className="pointer-events-none absolute inset-0 z-10 bg-black/45"
+                    aria-hidden
+                  />
+                </div>
+
+                <audio
+                  key={`hls-audio-${track_path}`}
+                  ref={(el) => {
+                    mediaRef.current = el;
+                  }}
+                  className="sr-only"
+                  playsInline
+                  preload="metadata"
+                  controls={false}
+                />
+
+                <div className={`${streamStatusRowClass} text-sm text-zinc-400`} aria-live="polite">
+                  {!mediaReady ? <p>Loading stream…</p> : null}
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  <button
+                    type="button"
+                    onClick={togglePlay}
+                    className={`${playBtnClass} h-12 w-12`}
+                    aria-label={playing ? 'Pause' : 'Play'}
+                  >
+                    {playing ? (
+                      <Pause className="h-5 w-5" fill="currentColor" />
+                    ) : (
+                      <Play className="h-5 w-5 pl-0.5" fill="currentColor" />
+                    )}
+                  </button>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    {waveformState === 'loading' ? (
+                      <div
+                        className={`${waveformShellClass} flex items-center justify-center text-xs text-[#00f2ff]/70`}
+                      >
+                        Loading waveform…
+                      </div>
+                    ) : (
+                      <div
+                        key={`wf-${track_path}`}
+                        ref={waveformContainerRef}
+                        className={waveformShellClass}
+                        onContextMenu={(e) => e.preventDefault()}
+                      />
+                    )}
+                    <div className="flex justify-between text-xs tabular-nums text-zinc-400">
+                      <span>{formatTime(currentTime)}</span>
+                      <span>{formatTime(duration)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : content_type === 'video' ? (
+              <div className="space-y-4">
+                <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-[#00f2ff]/15 bg-black shadow-[0_0_32px_-10px_rgba(123,46,255,0.15)] ring-1 ring-white/5">
                   <video
+                    key={`hls-video-${track_path}`}
                     ref={(el) => {
                       mediaRef.current = el;
                     }}
@@ -390,7 +660,7 @@ export function VaultPlayer({
                     onContextMenu={(e) => e.preventDefault()}
                   />
                   {!mediaReady ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm text-cyan-100/80">
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm text-zinc-300">
                       Loading stream…
                     </div>
                   ) : null}
@@ -400,7 +670,7 @@ export function VaultPlayer({
                   <button
                     type="button"
                     onClick={togglePlay}
-                    className={`${playButtonClass} h-12 w-12`}
+                    className={`${playBtnClass} h-12 w-12`}
                     aria-label={playing ? 'Pause' : 'Play'}
                   >
                     {playing ? (
@@ -412,18 +682,19 @@ export function VaultPlayer({
                   <div className="min-w-0 flex-1 space-y-2">
                     {waveformState === 'loading' ? (
                       <div
-                        className={`${waveformShellClass} flex items-center justify-center text-xs text-cyan-200/70`}
+                        className={`${waveformShellClass} flex items-center justify-center text-xs text-[#00f2ff]/70`}
                       >
                         Loading waveform…
                       </div>
                     ) : (
                       <div
+                        key={`wf-${track_path}`}
                         ref={waveformContainerRef}
                         className={waveformShellClass}
                         onContextMenu={(e) => e.preventDefault()}
                       />
                     )}
-                    <div className="flex justify-between text-xs tabular-nums text-cyan-100/75">
+                    <div className="flex justify-between text-xs tabular-nums text-zinc-400">
                       <span>{formatTime(currentTime)}</span>
                       <span>{formatTime(duration)}</span>
                     </div>
@@ -438,7 +709,7 @@ export function VaultPlayer({
                       playing ? 'animate-[spin_8s_linear_infinite]' : ''
                     }`}
                   >
-                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-500/20 via-fuchsia-500/15 to-transparent ring-2 ring-cyan-400/30" />
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[#00f2ff]/15 via-[#7b2eff]/12 to-transparent ring-2 ring-[#00f2ff]/25" />
                     {thumbnail_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -448,14 +719,15 @@ export function VaultPlayer({
                         className="relative z-10 h-[88%] w-[88%] rounded-full object-cover shadow-2xl ring-4 ring-black/50"
                       />
                     ) : (
-                      <div className="relative z-10 flex h-[88%] w-[88%] items-center justify-center rounded-full bg-zinc-900 text-4xl text-cyan-500/50 ring-4 ring-black/50">
+                      <div className="relative z-10 flex h-[88%] w-[88%] items-center justify-center rounded-full bg-zinc-900 text-4xl text-[#00f2ff]/40 ring-4 ring-black/50">
                         ♪
                       </div>
                     )}
-                    <div className="absolute left-1/2 top-1/2 z-20 h-full w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-950 shadow-lg ring-1 ring-cyan-500/30" />
+                    <div className="absolute left-1/2 top-1/2 z-20 h-full w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-950 shadow-lg ring-1 ring-[#7b2eff]/30" />
                   </div>
 
                   <audio
+                    key={`hls-audio-vinyl-${track_path}`}
                     ref={(el) => {
                       mediaRef.current = el;
                     }}
@@ -465,21 +737,25 @@ export function VaultPlayer({
                     controls={false}
                   />
 
-                  {!mediaReady ? (
-                    <p className="text-sm text-cyan-100/70">Loading stream…</p>
-                  ) : null}
+                  <div
+                    className={`${streamStatusRowClass} text-sm text-zinc-400`}
+                    aria-live="polite"
+                  >
+                    {!mediaReady ? <p>Loading stream…</p> : null}
+                  </div>
 
                   <div
                     className={`w-full space-y-4 ${embedded ? 'max-w-none' : 'max-w-md'}`}
                   >
                     {waveformState === 'loading' ? (
                       <div
-                        className={`${waveformShellClass} flex items-center justify-center text-xs text-cyan-200/70`}
+                        className={`${waveformShellClass} flex items-center justify-center text-xs text-[#00f2ff]/70`}
                       >
                         Loading waveform…
                       </div>
                     ) : (
                       <div
+                        key={`wf-${track_path}`}
                         ref={waveformContainerRef}
                         className={waveformShellClass}
                         onContextMenu={(e) => e.preventDefault()}
@@ -489,7 +765,7 @@ export function VaultPlayer({
                       <button
                         type="button"
                         onClick={togglePlay}
-                        className={`${playButtonClass} h-14 w-14`}
+                        className={`${playBtnClass} h-14 w-14`}
                         aria-label={playing ? 'Pause' : 'Play'}
                       >
                         {playing ? (
@@ -498,9 +774,9 @@ export function VaultPlayer({
                           <Play className="h-7 w-7 pl-1" fill="currentColor" />
                         )}
                       </button>
-                      <div className="text-sm tabular-nums text-cyan-100/80">
+                      <div className="text-sm tabular-nums text-zinc-300">
                         <span>{formatTime(currentTime)}</span>
-                        <span className="mx-1 text-fuchsia-400/50">/</span>
+                        <span className="mx-1 text-[#7b2eff]/50">/</span>
                         <span>{formatTime(duration)}</span>
                       </div>
                     </div>
@@ -511,9 +787,9 @@ export function VaultPlayer({
           </div>
 
           {(title || description) && (
-            <div className="mt-8 space-y-3 border-t border-cyan-500/20 pt-6">
+            <div className="mt-8 space-y-3 border-t border-white/10 pt-6">
               {title ? (
-                <h1 className="text-center text-xl font-semibold tracking-tight text-white drop-shadow-[0_0_18px_rgba(34,211,238,0.35)] sm:text-2xl">
+                <h1 className="text-center text-xl font-semibold tracking-tight text-white drop-shadow-[0_0_18px_rgba(0,242,255,0.2)] sm:text-2xl">
                   {title}
                 </h1>
               ) : null}
@@ -527,8 +803,8 @@ export function VaultPlayer({
                         onClick={() => setLang('en')}
                         className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                           lang === 'en'
-                            ? 'bg-cyan-400 text-zinc-950 shadow-[0_0_16px_-4px_rgba(34,211,238,0.6)]'
-                            : 'bg-white/10 text-cyan-100/80 hover:bg-white/15'
+                            ? 'bg-[#00f2ff]/20 text-[#00f2ff] ring-1 ring-[#00f2ff]/40'
+                            : 'bg-white/5 text-zinc-400 hover:bg-white/10'
                         }`}
                       >
                         EN
@@ -538,8 +814,8 @@ export function VaultPlayer({
                         onClick={() => setLang('es')}
                         className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                           lang === 'es'
-                            ? 'bg-fuchsia-400 text-zinc-950 shadow-[0_0_16px_-4px_rgba(217,70,239,0.5)]'
-                            : 'bg-white/10 text-cyan-100/80 hover:bg-white/15'
+                            ? 'bg-[#7b2eff]/25 text-violet-200 ring-1 ring-[#7b2eff]/40'
+                            : 'bg-white/5 text-zinc-400 hover:bg-white/10'
                         }`}
                       >
                         ES
@@ -547,7 +823,7 @@ export function VaultPlayer({
                     </div>
                   ) : null}
                   {description ? (
-                    <p className="text-center text-sm leading-relaxed text-zinc-200/90 sm:text-base">
+                    <p className="text-center text-sm leading-relaxed text-zinc-400 sm:text-base">
                       {description}
                     </p>
                   ) : null}

@@ -125,6 +125,22 @@
   }
 }
 
+/*
+ * Video: use default (smooth) scaling — crisp-edges / -webkit-optimize-contrast
+ * are for pixel art and make HD/4K footage look blocky or mushy.
+ */
+video {
+  image-rendering: auto;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Optional: hero vault loop — full compositor layer without changing scale */
+video.vault-hero-video {
+  image-rendering: auto;
+  transform: translate3d(0, 0, 0);
+}
+
 @keyframes dashboard-marquee-scroll {
   0% {
     transform: translateX(0);
