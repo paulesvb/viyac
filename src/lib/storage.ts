@@ -16,3 +16,13 @@ export function getPublicAssetUrl(objectPath: string): string {
   const path = objectPath.replace(/^\//, '');
   return `${base}/storage/v1/object/public/${ASSETS_BUCKET}/${path}`;
 }
+
+/**
+ * Use a storage key (`covers/x.jpg`) or an already-built public object URL.
+ * Full `http(s)://` strings are returned unchanged so env vars can paste Supabase public URLs.
+ */
+export function resolvePublicAssetsUrl(pathOrUrl: string): string {
+  const t = pathOrUrl.trim();
+  if (/^https?:\/\//i.test(t)) return t;
+  return getPublicAssetUrl(t);
+}

@@ -23,7 +23,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "svix": "^1.89.0",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "wavesurfer.js": "^7.12.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

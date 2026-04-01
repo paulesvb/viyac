@@ -8,32 +8,38 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent,
 } from 'react';
+import WaveSurfer from 'wavesurfer.js';
 
+import {
+  downsamplePeaksForDisplay,
+  parseWaveformJson,
+  type ParsedWaveform,
+} from '@/lib/waveform-json';
+import { resolvePublicAssetsUrl } from '@/lib/storage';
 import { vaultStreamUrl } from '@/lib/vault-stream';
 
 export type VaultTrackData = {
-  /** Full URL — typically `assets` bucket public URL or any CDN URL */
   bg_image_url: string;
   content_type: 'video' | 'audio';
-  /** Path in the private `vault` bucket (e.g. `userId/folder/playlist.m3u8`) */
+  /** Vault bucket path to HLS entry (e.g. `folder/index.m3u8`) — streamed via `/api/vault/stream/...` */
   track_path: string;
-  /** Full URL — typically public `assets` thumbnail */
   thumbnail_url?: string;
   title?: string;
   description_en?: string;
   description_es?: string;
+  /** Public `assets` key or full `https://...` URL to `waveform.json` (peaks + optional duration) */
+  waveform_json_path?: string;
+  /** Same as path; takes precedence when both are set */
+  waveform_json_url?: string;
 };
 
 type VaultPlayerProps = {
   trackData: VaultTrackData;
-  /**
-   * `embedded` keeps backgrounds inside the component (for dashboard, etc.).
-   * `fullscreen` uses fixed layers over the whole viewport (default).
-   */
   variant?: 'fullscreen' | 'embedded';
 };
+
+type WaveformLoadState = ParsedWaveform | null | 'loading' | 'error';
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -42,68 +48,38 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function WaveformProgress({
-  progress,
-  onSeek,
-  playing,
-}: {
-  progress: number;
-  onSeek: (e: MouseEvent<HTMLDivElement>) => void;
-  playing: boolean;
-}) {
-  const bars = 40;
-  return (
-    <div
-      className="relative w-full cursor-pointer select-none"
-      onClick={onSeek}
-      onContextMenu={(e) => e.preventDefault()}
-      role="presentation"
-    >
-      <div className="flex h-12 items-end justify-between gap-px rounded-lg bg-black/40 px-1 py-2 ring-1 ring-white/10">
-        {Array.from({ length: bars }).map((_, i) => {
-          const h = 25 + ((i * 11) % 75);
-          const barProgress = bars <= 1 ? 0 : i / (bars - 1);
-          const active = barProgress <= progress;
-          return (
-            <div
-              key={i}
-              className={`min-w-[3px] flex-1 rounded-sm transition-colors duration-150 ${
-                active ? 'bg-white/85' : 'bg-white/18'
-              } ${playing && active ? 'animate-pulse' : ''}`}
-              style={{ height: `${h}%` }}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
+function isParsedWaveform(w: WaveformLoadState): w is ParsedWaveform {
+  return w !== null && w !== 'loading' && w !== 'error';
 }
 
-function LinearProgress({
-  progress,
-  onSeek,
-}: {
-  progress: number;
-  onSeek: (e: MouseEvent<HTMLDivElement>) => void;
-}) {
-  return (
-    <div
-      className="group relative h-2 w-full cursor-pointer rounded-full bg-white/20"
-      onClick={onSeek}
-      onContextMenu={(e) => e.preventDefault()}
-      role="presentation"
-    >
-      <div
-        className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-fuchsia-400/90 to-violet-400/90"
-        style={{ width: `${progress * 100}%` }}
-      />
-      <div
-        className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white shadow-md opacity-0 transition-opacity group-hover:opacity-100"
-        style={{ left: `calc(${progress * 100}% - 6px)` }}
-      />
-    </div>
-  );
+/** Fallback when no JSON or parse fails — must match WaveSurfer peak range */
+function buildPlaceholderPeaks(length: number): Float32Array {
+  const out = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    const t = i / Math.max(1, length - 1);
+    const w =
+      Math.sin(t * Math.PI * 14) * 0.22 +
+      Math.sin(t * Math.PI * 27) * 0.14 +
+      Math.sin(t * Math.PI * 5) * 0.18;
+    const envelope = Math.sin(t * Math.PI) * 0.85 + 0.15;
+    out[i] = Math.min(1, Math.max(0.06, Math.abs(w) * envelope));
+  }
+  return out;
 }
+
+/** ~2k bins: matches placeholder density; avoids max-pooling 90k+ samples into solid blocks. */
+const WAVEFORM_DISPLAY_BINS = 2048;
+
+const VAULT_WAVESURFER = {
+  height: 104,
+  /** cyan → fuchsia (mirror line fill, no bars — reads better for pre-baked peaks) */
+  waveColor: ['#22d3ee', '#d946ef'] as [string, string],
+  progressColor: 'rgba(244, 114, 182, 0.92)',
+  cursorColor: '#ecfeff',
+  cursorWidth: 2,
+  /** Slight headroom so the mirrored silhouette does not clip the shell */
+  barHeight: 0.9,
+};
 
 export function VaultPlayer({
   trackData,
@@ -117,6 +93,8 @@ export function VaultPlayer({
     title,
     description_en,
     description_es,
+    waveform_json_path,
+    waveform_json_url,
   } = trackData;
 
   const [streamError, setStreamError] = useState<{
@@ -128,7 +106,47 @@ export function VaultPlayer({
 
   const [lang, setLang] = useState<'en' | 'es'>('en');
 
+  const pathTrim = waveform_json_path?.trim();
+  const urlTrim = waveform_json_url?.trim();
+  const wantsWaveformJson = Boolean(pathTrim || urlTrim);
+
+  const [waveformState, setWaveformState] = useState<WaveformLoadState>(() =>
+    wantsWaveformJson ? 'loading' : null,
+  );
+
+  useEffect(() => {
+    if (!wantsWaveformJson) {
+      setWaveformState(null);
+      return;
+    }
+    setWaveformState('loading');
+    let cancelled = false;
+    let jsonUrl: string;
+    try {
+      jsonUrl = resolvePublicAssetsUrl(urlTrim ?? pathTrim!);
+    } catch {
+      setWaveformState('error');
+      return;
+    }
+    void fetch(jsonUrl)
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json() as unknown;
+      })
+      .then((raw) => {
+        const parsed = parseWaveformJson(raw);
+        if (!cancelled) setWaveformState(parsed ?? 'error');
+      })
+      .catch(() => {
+        if (!cancelled) setWaveformState('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wantsWaveformJson, pathTrim, urlTrim, track_path]);
+
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
+  const waveformContainerRef = useRef<HTMLDivElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
 
   const [playing, setPlaying] = useState(false);
@@ -138,6 +156,67 @@ export function VaultPlayer({
   const mediaReady = readyForPath === track_path;
 
   const playUrl = useMemo(() => vaultStreamUrl(track_path), [track_path]);
+
+  useEffect(() => {
+    const container = waveformContainerRef.current;
+    const media = mediaRef.current;
+    if (!container || !media || !mediaReady || waveformState === 'loading') {
+      return;
+    }
+    if (!Number.isFinite(duration) || duration <= 0) {
+      return;
+    }
+
+    const useJson = isParsedWaveform(waveformState);
+    const peakChannels = useJson
+      ? downsamplePeaksForDisplay(waveformState.peaks, WAVEFORM_DISPLAY_BINS)
+      : [buildPlaceholderPeaks(WAVEFORM_DISPLAY_BINS)];
+    const waveDuration =
+      useJson && waveformState.duration > 0 ? waveformState.duration : duration;
+
+    const ws = WaveSurfer.create({
+      container,
+      height: VAULT_WAVESURFER.height,
+      waveColor: VAULT_WAVESURFER.waveColor,
+      progressColor: VAULT_WAVESURFER.progressColor,
+      cursorColor: VAULT_WAVESURFER.cursorColor,
+      cursorWidth: VAULT_WAVESURFER.cursorWidth,
+      peaks: peakChannels,
+      duration: waveDuration,
+      interact: true,
+      dragToSeek: { debounceTime: 0 },
+      normalize: true,
+      barHeight: VAULT_WAVESURFER.barHeight,
+      fillParent: true,
+    });
+
+    let cancelled = false;
+
+    const attachHlsMedia = () => {
+      if (cancelled) return;
+      try {
+        ws.setMediaElement(media);
+      } catch {
+        /* setMediaElement can throw if graph already wired */
+      }
+    };
+
+    ws.on('ready', attachHlsMedia, { once: true });
+    if (ws.getDecodedData()) {
+      queueMicrotask(attachHlsMedia);
+    }
+
+    return () => {
+      cancelled = true;
+      ws.destroy();
+    };
+  }, [
+    mediaReady,
+    duration,
+    track_path,
+    playUrl,
+    waveformState,
+  ]);
 
   useEffect(() => {
     const media = mediaRef.current;
@@ -222,19 +301,6 @@ export function VaultPlayer({
     };
   }, [playUrl, content_type, track_path]);
 
-  const progress = duration > 0 ? currentTime / duration : 0;
-
-  const seekFromEvent = useCallback(
-    (e: MouseEvent<HTMLDivElement>) => {
-      const media = mediaRef.current;
-      if (!media || !Number.isFinite(duration) || duration <= 0) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
-      media.currentTime = (x / rect.width) * duration;
-    },
-    [duration],
-  );
-
   const togglePlay = useCallback(() => {
     const media = mediaRef.current;
     if (!media) return;
@@ -257,9 +323,15 @@ export function VaultPlayer({
     ? 'min-h-[min(560px,78dvh)] sm:min-h-[min(600px,80dvh)]'
     : 'min-h-[100dvh]';
 
+  const waveformShellClass =
+    'min-h-[96px] w-full overflow-hidden rounded-xl border border-cyan-400/25 bg-black/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_28px_-8px_rgba(34,211,238,0.25)]';
+
+  const playButtonClass =
+    'flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-cyan-500 text-zinc-950 shadow-[0_0_24px_-4px_rgba(34,211,238,0.65)] ring-2 ring-cyan-300/40 transition hover:from-cyan-300 hover:to-cyan-400';
+
   return (
     <div
-      className={`relative w-full overflow-hidden ${shellMin} ${embedded ? 'rounded-2xl ring-1 ring-white/10' : ''}`}
+      className={`relative w-full overflow-hidden ${shellMin} ${embedded ? 'rounded-2xl ring-1 ring-cyan-500/20' : ''}`}
     >
       <div className={`pointer-events-none ${layer} inset-0 z-0`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -271,7 +343,7 @@ export function VaultPlayer({
       </div>
 
       <div
-        className={`${layer} inset-0 z-10 backdrop-blur-3xl bg-black/60`}
+        className={`${layer} inset-0 z-10 backdrop-blur-3xl bg-black/70`}
         aria-hidden
       />
 
@@ -279,14 +351,19 @@ export function VaultPlayer({
         className={`relative z-20 flex ${shellMin} flex-col items-center justify-center p-4 sm:p-8`}
       >
         <div
-          className="w-full max-w-3xl rounded-2xl border border-white/15 bg-white/10 p-4 shadow-2xl backdrop-blur-md sm:p-8"
+          className="w-full max-w-3xl rounded-2xl border border-cyan-500/30 bg-zinc-950/75 p-4 shadow-[0_0_48px_-12px_rgba(34,211,238,0.28)] backdrop-blur-md sm:p-8"
           style={{
             boxShadow:
-              '0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12)',
+              '0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(34,211,238,0.12)',
           }}
         >
           {loadError ? (
             <p className="mb-4 text-center text-sm text-red-300">{loadError}</p>
+          ) : null}
+          {wantsWaveformJson && waveformState === 'error' ? (
+            <p className="mb-3 text-center text-xs text-amber-200/90">
+              Waveform JSON failed to load — showing placeholder shape.
+            </p>
           ) : null}
 
           <div
@@ -294,8 +371,8 @@ export function VaultPlayer({
             onContextMenu={(e) => e.preventDefault()}
           >
             {content_type === 'video' ? (
-              <div className="space-y-3">
-                <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black ring-1 ring-white/10">
+              <div className="space-y-4">
+                <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-cyan-500/20 bg-black shadow-[0_0_32px_-10px_rgba(168,85,247,0.2)] ring-1 ring-white/5">
                   <video
                     ref={(el) => {
                       mediaRef.current = el;
@@ -309,17 +386,17 @@ export function VaultPlayer({
                     onContextMenu={(e) => e.preventDefault()}
                   />
                   {!mediaReady ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-sm text-white/80">
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm text-cyan-100/80">
                       Loading stream…
                     </div>
                   ) : null}
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                   <button
                     type="button"
                     onClick={togglePlay}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-zinc-900 shadow-lg transition hover:bg-white/90"
+                    className={`${playButtonClass} h-12 w-12`}
                     aria-label={playing ? 'Pause' : 'Play'}
                   >
                     {playing ? (
@@ -328,9 +405,21 @@ export function VaultPlayer({
                       <Play className="h-5 w-5 pl-0.5" fill="currentColor" />
                     )}
                   </button>
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <LinearProgress progress={progress} onSeek={seekFromEvent} />
-                    <div className="flex justify-between text-xs tabular-nums text-white/70">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    {waveformState === 'loading' ? (
+                      <div
+                        className={`${waveformShellClass} flex items-center justify-center text-xs text-cyan-200/70`}
+                      >
+                        Loading waveform…
+                      </div>
+                    ) : (
+                      <div
+                        ref={waveformContainerRef}
+                        className={waveformShellClass}
+                        onContextMenu={(e) => e.preventDefault()}
+                      />
+                    )}
+                    <div className="flex justify-between text-xs tabular-nums text-cyan-100/75">
                       <span>{formatTime(currentTime)}</span>
                       <span>{formatTime(duration)}</span>
                     </div>
@@ -345,21 +434,21 @@ export function VaultPlayer({
                       playing ? 'animate-[spin_8s_linear_infinite]' : ''
                     }`}
                   >
-                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/25 to-transparent ring-2 ring-white/20" />
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-cyan-500/20 via-fuchsia-500/15 to-transparent ring-2 ring-cyan-400/30" />
                     {thumbnail_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={thumbnail_url}
                         alt=""
                         draggable={false}
-                        className="relative z-10 h-[88%] w-[88%] rounded-full object-cover shadow-2xl ring-4 ring-black/40"
+                        className="relative z-10 h-[88%] w-[88%] rounded-full object-cover shadow-2xl ring-4 ring-black/50"
                       />
                     ) : (
-                      <div className="relative z-10 flex h-[88%] w-[88%] items-center justify-center rounded-full bg-zinc-800 text-4xl text-white/40 ring-4 ring-black/40">
+                      <div className="relative z-10 flex h-[88%] w-[88%] items-center justify-center rounded-full bg-zinc-900 text-4xl text-cyan-500/50 ring-4 ring-black/50">
                         ♪
                       </div>
                     )}
-                    <div className="absolute left-1/2 top-1/2 z-20 h-full w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-950/90 shadow-lg ring-1 ring-white/20" />
+                    <div className="absolute left-1/2 top-1/2 z-20 h-full w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-950 shadow-lg ring-1 ring-cyan-500/30" />
                   </div>
 
                   <audio
@@ -373,20 +462,28 @@ export function VaultPlayer({
                   />
 
                   {!mediaReady ? (
-                    <p className="text-sm text-white/70">Loading stream…</p>
+                    <p className="text-sm text-cyan-100/70">Loading stream…</p>
                   ) : null}
 
                   <div className="w-full max-w-md space-y-4">
-                    <WaveformProgress
-                      progress={progress}
-                      onSeek={seekFromEvent}
-                      playing={playing}
-                    />
+                    {waveformState === 'loading' ? (
+                      <div
+                        className={`${waveformShellClass} flex items-center justify-center text-xs text-cyan-200/70`}
+                      >
+                        Loading waveform…
+                      </div>
+                    ) : (
+                      <div
+                        ref={waveformContainerRef}
+                        className={waveformShellClass}
+                        onContextMenu={(e) => e.preventDefault()}
+                      />
+                    )}
                     <div className="flex items-center justify-center gap-4">
                       <button
                         type="button"
                         onClick={togglePlay}
-                        className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-zinc-900 shadow-xl transition hover:bg-white/90"
+                        className={`${playButtonClass} h-14 w-14`}
                         aria-label={playing ? 'Pause' : 'Play'}
                       >
                         {playing ? (
@@ -395,9 +492,9 @@ export function VaultPlayer({
                           <Play className="h-7 w-7 pl-1" fill="currentColor" />
                         )}
                       </button>
-                      <div className="text-sm tabular-nums text-white/80">
+                      <div className="text-sm tabular-nums text-cyan-100/80">
                         <span>{formatTime(currentTime)}</span>
-                        <span className="mx-1 text-white/40">/</span>
+                        <span className="mx-1 text-fuchsia-400/50">/</span>
                         <span>{formatTime(duration)}</span>
                       </div>
                     </div>
@@ -408,9 +505,9 @@ export function VaultPlayer({
           </div>
 
           {(title || description) && (
-            <div className="mt-8 space-y-3 border-t border-white/10 pt-6">
+            <div className="mt-8 space-y-3 border-t border-cyan-500/20 pt-6">
               {title ? (
-                <h1 className="text-center text-xl font-semibold tracking-tight text-white drop-shadow sm:text-2xl">
+                <h1 className="text-center text-xl font-semibold tracking-tight text-white drop-shadow-[0_0_18px_rgba(34,211,238,0.35)] sm:text-2xl">
                   {title}
                 </h1>
               ) : null}
@@ -424,8 +521,8 @@ export function VaultPlayer({
                         onClick={() => setLang('en')}
                         className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                           lang === 'en'
-                            ? 'bg-white text-zinc-900'
-                            : 'bg-white/10 text-white/80 hover:bg-white/20'
+                            ? 'bg-cyan-400 text-zinc-950 shadow-[0_0_16px_-4px_rgba(34,211,238,0.6)]'
+                            : 'bg-white/10 text-cyan-100/80 hover:bg-white/15'
                         }`}
                       >
                         EN
@@ -435,8 +532,8 @@ export function VaultPlayer({
                         onClick={() => setLang('es')}
                         className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                           lang === 'es'
-                            ? 'bg-white text-zinc-900'
-                            : 'bg-white/10 text-white/80 hover:bg-white/20'
+                            ? 'bg-fuchsia-400 text-zinc-950 shadow-[0_0_16px_-4px_rgba(217,70,239,0.5)]'
+                            : 'bg-white/10 text-cyan-100/80 hover:bg-white/15'
                         }`}
                       >
                         ES
@@ -444,7 +541,7 @@ export function VaultPlayer({
                     </div>
                   ) : null}
                   {description ? (
-                    <p className="text-center text-sm leading-relaxed text-white/90 sm:text-base">
+                    <p className="text-center text-sm leading-relaxed text-zinc-200/90 sm:text-base">
                       {description}
                     </p>
                   ) : null}

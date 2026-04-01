@@ -18,6 +18,8 @@ function dashboardPlayerBgUrl(): string {
 export default function DashboardPage() {
   const { user, isLoaded } = useUser();
   const trackPath = process.env.NEXT_PUBLIC_DASHBOARD_VAULT_TRACK_PATH?.trim();
+  const waveformJsonPath =
+    process.env.NEXT_PUBLIC_DASHBOARD_WAVEFORM_JSON_PATH?.trim();
 
   if (!isLoaded) {
     return (
@@ -100,6 +102,9 @@ export default function DashboardPage() {
               bg_image_url: dashboardPlayerBgUrl(),
               content_type: 'video',
               track_path: trackPath,
+              ...(waveformJsonPath
+                ? { waveform_json_path: waveformJsonPath }
+                : {}),
               title: 'Preview',
               description_en: 'Signed-in playback from the vault bucket.',
             }}
