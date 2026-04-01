@@ -320,7 +320,7 @@ export function VaultPlayer({
   const embedded = variant === 'embedded';
   const layer = embedded ? 'absolute' : 'fixed';
   const shellMin = embedded
-    ? 'min-h-[min(560px,78dvh)] sm:min-h-[min(600px,80dvh)]'
+    ? 'min-h-[min(480px,82dvh)] sm:min-h-[min(520px,78dvh)] lg:min-h-[min(560px,80dvh)]'
     : 'min-h-[100dvh]';
 
   const waveformShellClass =
@@ -348,10 +348,14 @@ export function VaultPlayer({
       />
 
       <div
-        className={`relative z-20 flex ${shellMin} flex-col items-center justify-center p-4 sm:p-8`}
+        className={`relative z-20 flex ${shellMin} flex-col items-center justify-center ${embedded ? 'p-3 sm:p-4 lg:p-6' : 'p-4 sm:p-8'}`}
       >
         <div
-          className="w-full max-w-3xl rounded-2xl border border-cyan-500/30 bg-zinc-950/75 p-4 shadow-[0_0_48px_-12px_rgba(34,211,238,0.28)] backdrop-blur-md sm:p-8"
+          className={`w-full border border-cyan-500/30 bg-zinc-950/75 shadow-[0_0_48px_-12px_rgba(34,211,238,0.28)] backdrop-blur-md ${
+            embedded
+              ? 'max-w-none rounded-xl p-3 sm:rounded-2xl sm:p-5 lg:p-8'
+              : 'max-w-3xl rounded-2xl p-4 sm:p-8'
+          }`}
           style={{
             boxShadow:
               '0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(34,211,238,0.12)',
@@ -465,7 +469,9 @@ export function VaultPlayer({
                     <p className="text-sm text-cyan-100/70">Loading stream…</p>
                   ) : null}
 
-                  <div className="w-full max-w-md space-y-4">
+                  <div
+                    className={`w-full space-y-4 ${embedded ? 'max-w-none' : 'max-w-md'}`}
+                  >
                     {waveformState === 'loading' ? (
                       <div
                         className={`${waveformShellClass} flex items-center justify-center text-xs text-cyan-200/70`}

@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { dark } from "@clerk/themes";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 
@@ -13,6 +14,12 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+/** Matches `globals.css` dark `--background` (~ zinc-950) for browser chrome. */
+export const viewport: Viewport = {
+  themeColor: '#0c0c0c',
+  colorScheme: 'dark',
+};
 
 export const metadata: Metadata = {
   title: 'VIYAC | Official Site',
@@ -36,11 +43,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} min-h-dvh antialiased`}
       >
-        <ClerkProvider>
+        <ClerkProvider appearance={{ baseTheme: dark }}>
           <Navbar />
           <main>{children}</main>
         </ClerkProvider>
