@@ -18,4 +18,9 @@ export type DashboardTrack = {
   bg_image_path?: string;
   /** Optional; audio layout only — full URL or `assets` key */
   thumbnail_url?: string;
+  /**
+   * Square cover for iOS/Android lock screen & media controls (full URL or `assets` key).
+   * Prefer this over `thumbnail_url` when the disc image should differ from OS “album art”.
+   */
+  lock_screen_art_path?: string;
 };

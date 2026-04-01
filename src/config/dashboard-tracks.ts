@@ -13,6 +13,7 @@ import type { DashboardTrack } from '@/lib/dashboard-track-types';
  *   waveform_json_vault_path: 'rocket-57/waveform.json',
  *   vault_background_video_path: 'rocket-57/video-loop.mp4',
  *   bg_image_path: 'rocket-57/cover.jpg',
+ *   lock_screen_art_path: 'rocket-57/album-512.jpg',
  *   description_en: '…',
  * },
  */

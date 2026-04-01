@@ -37,6 +37,11 @@ export type VaultTrackData = {
   waveform_json_vault_path?: string;
   /** Vault object key for looping background MP4 (4K); signed URL + top hero video. HLS attaches to `<audio>`. */
   vault_background_video_path?: string;
+  /**
+   * Square-ish cover for lock screen / Control Center / CarPlay (HTTPS or same-origin).
+   * Not derived from `bg_image_url` — that image is often a blurred stock backdrop (e.g. Picsum).
+   */
+  lock_screen_art_url?: string;
 };
 
 type VaultPlayerProps = {
@@ -103,6 +108,7 @@ export function VaultPlayer({
     content_type,
     track_path,
     thumbnail_url,
+    lock_screen_art_url,
     title,
     description_en,
     description_es,
@@ -499,11 +505,19 @@ export function VaultPlayer({
 
   const lockScreenTitle = title?.trim() || 'Track';
   const lockScreenArtworkHref = useMemo(() => {
-    const raw = thumbnail_url?.trim() || bg_image_url?.trim();
+    const envDefault =
+      typeof process.env.NEXT_PUBLIC_MEDIA_SESSION_ART_URL === 'string'
+        ? process.env.NEXT_PUBLIC_MEDIA_SESSION_ART_URL.trim()
+        : '';
+    const raw =
+      lock_screen_art_url?.trim() ||
+      thumbnail_url?.trim() ||
+      envDefault ||
+      '';
     if (!raw) return null;
     if (typeof window === 'undefined') return raw;
     return resolveAbsoluteMediaUrl(raw);
-  }, [thumbnail_url, bg_image_url]);
+  }, [lock_screen_art_url, thumbnail_url]);
 
   /** Lock screen / Control Center / CarPlay — tie remote controls to HLS element, not the muted hero video. */
   useEffect(() => {
@@ -535,11 +549,8 @@ export function VaultPlayer({
         artist: '',
         artwork: lockScreenArtworkHref
           ? [
-              {
-                src: lockScreenArtworkHref,
-                sizes: '512x512',
-                type: 'image/jpeg',
-              },
+              { src: lockScreenArtworkHref, sizes: '512x512' },
+              { src: lockScreenArtworkHref, sizes: '256x256' },
             ]
           : [],
       });

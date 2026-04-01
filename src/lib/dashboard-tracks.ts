@@ -97,6 +97,7 @@ export function toVaultTrackData(track: DashboardTrack): VaultTrackData {
     content_type: track.content_type ?? 'video',
     track_path: track.track_path,
     thumbnail_url: resolveOptionalAssetUrl(track.thumbnail_url),
+    lock_screen_art_url: resolveOptionalAssetUrl(track.lock_screen_art_path),
     title: track.title,
     description_en: track.description_en,
     description_es: track.description_es,
