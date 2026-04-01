@@ -70,6 +70,21 @@ function resolveAbsoluteMediaUrl(href: string): string {
   }
 }
 
+/**
+ * Safari often falls back to the largest on-page `<img>` for lock-screen art when
+ * `MediaMetadata` artwork is missing or fails to load. Default dashboard bg uses
+ * Lorem Picsum — that URL must not be a real `<img src>` or iOS shows it as “album art”.
+ */
+function isStockPhotoBackdropUrl(url: string): boolean {
+  return /picsum\.photos/i.test(url);
+}
+
+/** Inlined at build time; change requires redeploy on Vercel etc. */
+const MEDIA_SESSION_ART_ENV =
+  typeof process.env.NEXT_PUBLIC_MEDIA_SESSION_ART_URL === 'string'
+    ? process.env.NEXT_PUBLIC_MEDIA_SESSION_ART_URL.trim()
+    : '';
+
 function buildPlaceholderPeaks(length: number): Float32Array {
   const out = new Float32Array(length);
   for (let i = 0; i < length; i++) {
@@ -505,14 +520,10 @@ export function VaultPlayer({
 
   const lockScreenTitle = title?.trim() || 'Track';
   const lockScreenArtworkHref = useMemo(() => {
-    const envDefault =
-      typeof process.env.NEXT_PUBLIC_MEDIA_SESSION_ART_URL === 'string'
-        ? process.env.NEXT_PUBLIC_MEDIA_SESSION_ART_URL.trim()
-        : '';
     const raw =
+      MEDIA_SESSION_ART_ENV ||
       lock_screen_art_url?.trim() ||
       thumbnail_url?.trim() ||
-      envDefault ||
       '';
     if (!raw) return null;
     if (typeof window === 'undefined') return raw;
@@ -543,27 +554,32 @@ export function VaultPlayer({
       }
     };
 
-    try {
-      ms.metadata = new MediaMetadata({
-        title: lockScreenTitle,
-        artist: '',
-        artwork: lockScreenArtworkHref
-          ? [
-              { src: lockScreenArtworkHref, sizes: '512x512' },
-              { src: lockScreenArtworkHref, sizes: '256x256' },
-            ]
-          : [],
-      });
-    } catch {
+    const applyMetadata = () => {
       try {
         ms.metadata = new MediaMetadata({
           title: lockScreenTitle,
           artist: '',
+          artwork: lockScreenArtworkHref
+            ? [
+                { src: lockScreenArtworkHref, sizes: '512x512' },
+                { src: lockScreenArtworkHref, sizes: '256x256' },
+              ]
+            : [],
         });
       } catch {
-        /* ignore */
+        try {
+          ms.metadata = new MediaMetadata({
+            title: lockScreenTitle,
+            artist: '',
+          });
+        } catch {
+          /* ignore */
+        }
       }
-    }
+    };
+
+    applyMetadata();
+    media.addEventListener('playing', applyMetadata, { once: true });
 
     const skipSeconds = 15;
 
@@ -649,12 +665,19 @@ export function VaultPlayer({
       {showBackdropImage ? (
         <>
           <div className={`pointer-events-none ${layer} inset-0 z-0`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={bg_image_url}
-              alt=""
-              className="h-full w-full object-cover"
-            />
+            {isStockPhotoBackdropUrl(bg_image_url) ? (
+              <div
+                className="h-full w-full bg-gradient-to-br from-zinc-900 via-zinc-950 to-black"
+                aria-hidden
+              />
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={bg_image_url}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            )}
           </div>
           <div
             className={`${layer} inset-0 z-10 backdrop-blur-3xl bg-black/70`}
