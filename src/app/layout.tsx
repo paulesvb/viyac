@@ -24,6 +24,11 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: 'VIYAC | Official Site',
   description: 'Hybrid Soul artist Viyac blending human composition with AI vocal synthesis. New music February 2026.',
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon.ico',
+    apple: '/favicon.ico',
+  },
   openGraph: {
     title: 'VIYAC - The Future of Hybrid Soul',
     description: 'Hybrid Soul artist Viyac blending human composition with AI vocal synthesis. New music February 2026.',
