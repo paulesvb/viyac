@@ -4,6 +4,7 @@ import { dark } from "@clerk/themes";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
+import { getSiteUrl } from "@/lib/site-url";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,6 +23,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getSiteUrl()),
   title: 'VIYAC | Official Site',
   description: 'Hybrid Soul artist Viyac blending human composition with AI vocal synthesis. New music February 2026.',
   icons: {
@@ -31,13 +33,11 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'VIYAC - The Future of Hybrid Soul',
     description: 'Hybrid Soul artist Viyac blending human composition with AI vocal synthesis. New music February 2026.',
-    images: ['/og-image.jpg'],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'VIYAC | Official Site',
     description: 'Hybrid Soul artist Viyac blending human composition with AI vocal synthesis.',
-    images: ['/og-image.jpg'],
   },
 };
 
