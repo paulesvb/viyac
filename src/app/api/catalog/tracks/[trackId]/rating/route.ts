@@ -1,21 +1,21 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import type { SupabaseClient } from '@supabase/supabase-js';
-
 import { getCatalogTrackIfAccessible } from '@/lib/catalog-track-access';
 import {
   listenEligibleForRating,
   ratingListenThresholdSeconds,
 } from '@/lib/rating-listen-policy';
-import { createServiceSupabase } from '@/lib/supabase-service';
+import { createServiceCatalog } from '@/lib/supabase-catalog';
 import { isCatalogTrackId } from '@/lib/catalog-track-id';
 
 export const runtime = 'nodejs';
 
 type Body = { rating?: unknown };
 
+type CatalogClient = ReturnType<typeof createServiceCatalog>;
+
 async function loadListenAndRating(
-  supabase: SupabaseClient,
+  supabase: CatalogClient,
   userId: string,
   trackId: string,
 ) {
@@ -57,7 +57,7 @@ export async function GET(
   }
 
   try {
-    const supabase = createServiceSupabase();
+    const supabase = createServiceCatalog();
     const track = await getCatalogTrackIfAccessible(supabase, userId, trackId);
     if (!track) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -119,7 +119,7 @@ export async function PUT(
   }
 
   try {
-    const supabase = createServiceSupabase();
+    const supabase = createServiceCatalog();
     const track = await getCatalogTrackIfAccessible(supabase, userId, trackId);
     if (!track) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -153,7 +153,7 @@ export async function PUT(
       return NextResponse.json(
         {
           error: error.message,
-          hint: 'Apply migration 20260402200000_track_listen_and_ratings.sql if the table is missing.',
+          hint: 'Apply migration 20260402200000_track_listen_and_ratings.sql (schema `api`) if the table is missing.',
         },
         { status: 500 },
       );

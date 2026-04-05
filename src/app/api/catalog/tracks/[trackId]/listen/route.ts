@@ -2,7 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
 import { getCatalogTrackIfAccessible } from '@/lib/catalog-track-access';
-import { createServiceSupabase } from '@/lib/supabase-service';
+import { createServiceCatalog } from '@/lib/supabase-catalog';
 import { isCatalogTrackId } from '@/lib/catalog-track-id';
 
 export const runtime = 'nodejs';
@@ -48,7 +48,7 @@ export async function POST(
   }
 
   try {
-    const supabase = createServiceSupabase();
+    const supabase = createServiceCatalog();
     const track = await getCatalogTrackIfAccessible(supabase, userId, trackId);
     if (!track) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -93,7 +93,7 @@ export async function POST(
       return NextResponse.json(
         {
           error: upsertError.message,
-          hint: 'Apply migration 20260402200000_track_listen_and_ratings.sql if the table is missing.',
+          hint: 'Apply migration 20260402200000_track_listen_and_ratings.sql (schema `api`) if the table is missing.',
         },
         { status: 500 },
       );

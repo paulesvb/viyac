@@ -1,4 +1,4 @@
-/** Values for `public.tracks.provenance_type` (catalog). */
+/** Values for `api.tracks.provenance_type` (catalog). */
 export type ProvenanceType = 'genesis' | 'hybrid' | 'echo';
 
 export const PROVENANCE_META: Record<

@@ -1,6 +1,6 @@
 import type { ProvenanceType } from '@/lib/provenance';
 
-/** Row shape for public.albums (music catalog). */
+/** Row shape for api.albums (music catalog). */
 export type CatalogAlbumRow = {
   id: string;
   slug: string;
@@ -14,7 +14,7 @@ export type CatalogAlbumRow = {
   updated_at: string;
 };
 
-/** Row shape for public.tracks (music catalog). */
+/** Row shape for api.tracks (music catalog). */
 export type CatalogTrackRow = {
   id: string;
   slug: string;

@@ -43,7 +43,7 @@ export type VaultTrackData = {
    * Not derived from `bg_image_url` — that image is often a blurred stock backdrop (e.g. Picsum).
    */
   lock_screen_art_url?: string;
-  /** When set, listen time is reported for catalog rating eligibility (UUID from `public.tracks`). */
+  /** When set, listen time is reported for catalog rating eligibility (UUID from `api.tracks`). */
   catalog_track_id?: string;
 };
 

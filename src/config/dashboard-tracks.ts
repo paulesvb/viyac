@@ -15,7 +15,7 @@ import type { DashboardTrack } from '@/lib/dashboard-track-types';
  *   bg_image_path: 'rocket-57/cover.jpg',
  *   lock_screen_art_path: 'rocket-57/album-512.jpg',
  *   description_en: '…',
- *   catalog_track_id: 'uuid-from-public.tracks', // optional: listen log + personal rating on /music/tracks/[slug]
+ *   catalog_track_id: 'uuid-from-api.tracks', // optional: listen log + personal rating on /music/tracks/[slug]
  * },
  */
 export const dashboardTracksConfig: DashboardTrack[] = [];

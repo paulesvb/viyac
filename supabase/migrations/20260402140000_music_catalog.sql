@@ -1,7 +1,10 @@
--- Music catalog: albums, tracks, album_tracks.
--- profiles.id is the Clerk user id (text), matching webhook upserts.
+-- Music catalog: api schema (tracks, albums, album_tracks).
+-- profiles stays in public; FKs reference public.profiles(id).
 -- RLS uses auth.jwt()->>'sub' for Clerk JWTs once Supabase third-party auth is configured.
 -- Until then, server routes using the service role bypass RLS.
+-- PostgREST: add schema `api` under Project Settings → API → Exposed schemas.
+
+CREATE SCHEMA IF NOT EXISTS api;
 
 -- ---------------------------------------------------------------------------
 -- profiles.role (platform admin later; default listener/user)
@@ -13,7 +16,7 @@ ALTER TABLE public.profiles
 -- ---------------------------------------------------------------------------
 -- tracks (canonical recording; may appear on many albums via album_tracks)
 -- ---------------------------------------------------------------------------
-CREATE TABLE public.tracks (
+CREATE TABLE api.tracks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   slug text NOT NULL,
   title text NOT NULL,
@@ -51,12 +54,12 @@ CREATE TABLE public.tracks (
   UNIQUE (owner_id, slug)
 );
 
-CREATE INDEX tracks_owner_id_idx ON public.tracks (owner_id);
+CREATE INDEX tracks_owner_id_idx ON api.tracks (owner_id);
 
 -- ---------------------------------------------------------------------------
 -- albums
 -- ---------------------------------------------------------------------------
-CREATE TABLE public.albums (
+CREATE TABLE api.albums (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   slug text NOT NULL UNIQUE,
   title text NOT NULL,
@@ -65,83 +68,99 @@ CREATE TABLE public.albums (
     visibility IN ('private', 'public', 'unlisted')
   ),
   owner_id text NOT NULL REFERENCES public.profiles (id) ON DELETE CASCADE,
-  featured_track_id uuid REFERENCES public.tracks (id) ON DELETE SET NULL,
+  featured_track_id uuid REFERENCES api.tracks (id) ON DELETE SET NULL,
   sort_order integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX albums_owner_id_idx ON public.albums (owner_id);
+CREATE INDEX albums_owner_id_idx ON api.albums (owner_id);
 
 -- ---------------------------------------------------------------------------
 -- album_tracks (many-to-many)
 -- ---------------------------------------------------------------------------
-CREATE TABLE public.album_tracks (
-  album_id uuid NOT NULL REFERENCES public.albums (id) ON DELETE CASCADE,
-  track_id uuid NOT NULL REFERENCES public.tracks (id) ON DELETE CASCADE,
+CREATE TABLE api.album_tracks (
+  album_id uuid NOT NULL REFERENCES api.albums (id) ON DELETE CASCADE,
+  track_id uuid NOT NULL REFERENCES api.tracks (id) ON DELETE CASCADE,
   sort_order integer NOT NULL DEFAULT 0,
   PRIMARY KEY (album_id, track_id)
 );
 
-CREATE INDEX album_tracks_track_id_idx ON public.album_tracks (track_id);
+CREATE INDEX album_tracks_track_id_idx ON api.album_tracks (track_id);
+
+-- ---------------------------------------------------------------------------
+-- Schema grants (RLS still applies for anon/authenticated)
+-- ---------------------------------------------------------------------------
+GRANT USAGE ON SCHEMA api TO postgres, anon, authenticated, service_role;
+
+GRANT ALL ON ALL TABLES IN SCHEMA api TO postgres, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA api TO postgres, service_role;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA api TO authenticated, anon;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA api
+  GRANT ALL ON TABLES TO postgres, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA api
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated, anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA api
+  GRANT ALL ON SEQUENCES TO postgres, service_role;
 
 -- ---------------------------------------------------------------------------
 -- Row level security
 -- ---------------------------------------------------------------------------
-ALTER TABLE public.tracks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.albums ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.album_tracks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api.tracks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api.albums ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api.album_tracks ENABLE ROW LEVEL SECURITY;
 
--- Helper: current JWT subject (Clerk user id when JWT template maps sub)
 -- Albums: public / unlisted readable by anyone; private only owner
-CREATE POLICY albums_select ON public.albums FOR SELECT USING (
+CREATE POLICY albums_select ON api.albums FOR SELECT USING (
   visibility IN ('public', 'unlisted')
   OR owner_id = (auth.jwt()->>'sub')
 );
 
-CREATE POLICY albums_insert ON public.albums FOR INSERT
+CREATE POLICY albums_insert ON api.albums FOR INSERT
 WITH CHECK (owner_id = (auth.jwt()->>'sub'));
 
-CREATE POLICY albums_update ON public.albums FOR UPDATE USING (
+CREATE POLICY albums_update ON api.albums FOR UPDATE USING (
   owner_id = (auth.jwt()->>'sub')
 )
 WITH CHECK (owner_id = (auth.jwt()->>'sub'));
 
-CREATE POLICY albums_delete ON public.albums FOR DELETE USING (
+CREATE POLICY albums_delete ON api.albums FOR DELETE USING (
   owner_id = (auth.jwt()->>'sub')
 );
 
 -- Tracks: owner always; or visible on a public/unlisted album
-CREATE POLICY tracks_select ON public.tracks FOR SELECT USING (
+CREATE POLICY tracks_select ON api.tracks FOR SELECT USING (
   owner_id = (auth.jwt()->>'sub')
   OR visibility IN ('public', 'unlisted')
   OR EXISTS (
     SELECT 1
-    FROM public.album_tracks at
-    JOIN public.albums a ON a.id = at.album_id
+    FROM api.album_tracks at
+    JOIN api.albums a ON a.id = at.album_id
     WHERE
       at.track_id = tracks.id
       AND a.visibility IN ('public', 'unlisted')
   )
 );
 
-CREATE POLICY tracks_insert ON public.tracks FOR INSERT
+CREATE POLICY tracks_insert ON api.tracks FOR INSERT
 WITH CHECK (owner_id = (auth.jwt()->>'sub'));
 
-CREATE POLICY tracks_update ON public.tracks FOR UPDATE USING (
+CREATE POLICY tracks_update ON api.tracks FOR UPDATE USING (
   owner_id = (auth.jwt()->>'sub')
 )
 WITH CHECK (owner_id = (auth.jwt()->>'sub'));
 
-CREATE POLICY tracks_delete ON public.tracks FOR DELETE USING (
+CREATE POLICY tracks_delete ON api.tracks FOR DELETE USING (
   owner_id = (auth.jwt()->>'sub')
 );
 
 -- album_tracks: readable if album is readable; writable if album owner
-CREATE POLICY album_tracks_select ON public.album_tracks FOR SELECT USING (
+CREATE POLICY album_tracks_select ON api.album_tracks FOR SELECT USING (
   EXISTS (
     SELECT 1
-    FROM public.albums a
+    FROM api.albums a
     WHERE
       a.id = album_tracks.album_id
       AND (
@@ -151,31 +170,31 @@ CREATE POLICY album_tracks_select ON public.album_tracks FOR SELECT USING (
   )
 );
 
-CREATE POLICY album_tracks_insert ON public.album_tracks FOR INSERT
+CREATE POLICY album_tracks_insert ON api.album_tracks FOR INSERT
 WITH CHECK (
   EXISTS (
     SELECT 1
-    FROM public.albums a
+    FROM api.albums a
     WHERE
       a.id = album_tracks.album_id
       AND a.owner_id = (auth.jwt()->>'sub')
   )
 );
 
-CREATE POLICY album_tracks_update ON public.album_tracks FOR UPDATE USING (
+CREATE POLICY album_tracks_update ON api.album_tracks FOR UPDATE USING (
   EXISTS (
     SELECT 1
-    FROM public.albums a
+    FROM api.albums a
     WHERE
       a.id = album_tracks.album_id
       AND a.owner_id = (auth.jwt()->>'sub')
   )
 );
 
-CREATE POLICY album_tracks_delete ON public.album_tracks FOR DELETE USING (
+CREATE POLICY album_tracks_delete ON api.album_tracks FOR DELETE USING (
   EXISTS (
     SELECT 1
-    FROM public.albums a
+    FROM api.albums a
     WHERE
       a.id = album_tracks.album_id
       AND a.owner_id = (auth.jwt()->>'sub')

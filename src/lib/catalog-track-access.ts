@@ -1,12 +1,14 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-
+import type { createServiceCatalog } from '@/lib/supabase-catalog';
 import type { CatalogTrackRow } from '@/lib/catalog-types';
+
+type CatalogServiceClient = ReturnType<typeof createServiceCatalog>;
 
 /**
  * Returns the track row if `userId` may access it for playback/catalog (matches tracks RLS idea).
+ * Pass `createServiceCatalog()` (service role, `api` schema).
  */
 export async function getCatalogTrackIfAccessible(
-  supabase: SupabaseClient,
+  supabase: CatalogServiceClient,
   userId: string,
   trackId: string,
 ): Promise<CatalogTrackRow | null> {

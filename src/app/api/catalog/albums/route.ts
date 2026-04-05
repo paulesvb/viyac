@@ -1,7 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
-import { createServiceSupabase } from '@/lib/supabase-service';
+import { createServiceCatalog } from '@/lib/supabase-catalog';
 import type { CatalogAlbumRow } from '@/lib/catalog-types';
 
 export const runtime = 'nodejs';
@@ -17,7 +17,7 @@ export async function GET() {
   }
 
   try {
-    const supabase = createServiceSupabase();
+    const supabase = createServiceCatalog();
     const { data, error } = await supabase
       .from('albums')
       .select('*')
@@ -28,7 +28,10 @@ export async function GET() {
     if (error) {
       console.error('[catalog/albums]', error);
       return NextResponse.json(
-        { error: error.message, hint: 'Run the music catalog migration in Supabase if tables are missing.' },
+        {
+          error: error.message,
+          hint: 'Run the music catalog migration in Supabase (schema `api`) if tables are missing.',
+        },
         { status: 500 },
       );
     }
