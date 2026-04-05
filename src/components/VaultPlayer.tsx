@@ -19,6 +19,7 @@ import {
 import { fetchVaultSignedUrl } from '@/lib/vault-signed-url-client';
 import { resolvePublicAssetsUrl } from '@/lib/storage';
 import { vaultStreamUrl } from '@/lib/vault-stream';
+import { useCatalogListenHeartbeat } from '@/hooks/use-catalog-listen-heartbeat';
 
 export type VaultTrackData = {
   /** Fallback still when no vault background video */
@@ -42,6 +43,8 @@ export type VaultTrackData = {
    * Not derived from `bg_image_url` — that image is often a blurred stock backdrop (e.g. Picsum).
    */
   lock_screen_art_url?: string;
+  /** When set, listen time is reported for catalog rating eligibility (UUID from `public.tracks`). */
+  catalog_track_id?: string;
 };
 
 type VaultPlayerProps = {
@@ -131,6 +134,7 @@ export function VaultPlayer({
     waveform_json_url,
     waveform_json_vault_path,
     vault_background_video_path,
+    catalog_track_id,
   } = trackData;
 
   const vaultWfTrim = waveform_json_vault_path?.trim();
@@ -239,6 +243,12 @@ export function VaultPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [readyForPath, setReadyForPath] = useState<string | null>(null);
   const mediaReady = readyForPath === track_path;
+
+  useCatalogListenHeartbeat({
+    catalogTrackId: catalog_track_id?.trim(),
+    playing,
+    trackKey: track_path,
+  });
 
   const playUrl = useMemo(() => vaultStreamUrl(track_path), [track_path]);
 

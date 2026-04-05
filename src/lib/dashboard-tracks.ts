@@ -109,5 +109,8 @@ export function toVaultTrackData(track: DashboardTrack): VaultTrackData {
     ...(track.vault_background_video_path?.trim()
       ? { vault_background_video_path: track.vault_background_video_path.trim() }
       : {}),
+    ...(track.catalog_track_id?.trim()
+      ? { catalog_track_id: track.catalog_track_id.trim() }
+      : {}),
   };
 }
