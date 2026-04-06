@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { Webhook } from 'svix';
+
+import {
+  type ClerkProfilePayload,
+  syncClerkProfileToSupabase,
+} from '@/lib/clerk-profile-sync';
 
 export const runtime = 'nodejs';
 
@@ -29,38 +33,25 @@ function getDisplayName(data: ClerkUserCreatedEvent['data'], email: string): str
   return email.split('@')[0] ?? data.id;
 }
 
-function normalizeProvider(provider?: string | null): string {
-  if (!provider) return 'email';
-  return provider.replace(/^oauth_/, '');
-}
-
-function extractProviders(
-  externalAccounts: ClerkUserCreatedEvent['data']['external_accounts']
-): string[] {
-  const providers = (externalAccounts ?? []).map((acc) => normalizeProvider(acc.provider));
-  return Array.from(new Set(providers.length ? providers : ['email']));
-}
-
-function getPreferredProvider(
-  externalAccounts: ClerkUserCreatedEvent['data']['external_accounts']
-): string {
-  const accounts = externalAccounts ?? [];
-  if (!accounts.length) return 'email';
-
-  // Heuristic: Clerk commonly appends newly linked providers to the end.
-  // This better reflects "latest provider used/linked" than taking index 0.
-  return normalizeProvider(accounts[accounts.length - 1]?.provider);
+function toPayload(
+  data: ClerkUserCreatedEvent['data'],
+  email: string,
+): ClerkProfilePayload {
+  return {
+    id: data.id,
+    email,
+    displayName: getDisplayName(data, email),
+    externalAccounts: data.external_accounts,
+  };
 }
 
 export async function POST(req: Request) {
   const signingSecret = process.env.CLERK_WEBHOOK_SIGNING_SECRET;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!signingSecret || !supabaseUrl || !serviceRoleKey) {
+  if (!signingSecret) {
     return NextResponse.json(
-      { error: 'Missing required env vars for Clerk webhook handling.' },
-      { status: 500 }
+      { error: 'Missing CLERK_WEBHOOK_SIGNING_SECRET.' },
+      { status: 500 },
     );
   }
 
@@ -90,10 +81,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true, ignored: event.type }, { status: 200 });
   }
 
-  const { id, email_addresses, external_accounts, primary_email_address_id } = event.data;
+  const { email_addresses, primary_email_address_id } = event.data;
 
   const primaryEmail = email_addresses.find(
-    (email) => email.id === primary_email_address_id
+    (e) => e.id === primary_email_address_id,
   );
   const fallbackEmail = email_addresses[0];
   const email = primaryEmail?.email_address ?? fallbackEmail?.email_address;
@@ -101,56 +92,20 @@ export async function POST(req: Request) {
   if (!email) {
     return NextResponse.json(
       { error: `No email available on ${event.type} event.` },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  const displayName = getDisplayName(event.data, email);
-  const providers = extractProviders(external_accounts);
-  const providerName = getPreferredProvider(external_accounts);
-
-  /** PostgREST only accepts schemas listed under Supabase → Settings → API → Exposed schemas (default: public, graphql_public). */
-  const profilesSchema = process.env.SUPABASE_PROFILES_SCHEMA ?? 'public';
-
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-
-  const profilesTable =
-    profilesSchema === 'public'
-      ? supabase.from('profiles')
-      : supabase.schema(profilesSchema).from('profiles');
-
-  // Preserve previously known providers; some Clerk events may only include a subset.
-  const { data: existingProfile } = await profilesTable
-    .select('auth_provider, auth_providers')
-    .eq('id', id)
-    .maybeSingle();
-
-  const existingProviders = Array.isArray(existingProfile?.auth_providers)
-    ? (existingProfile.auth_providers as string[])
-    : [];
-  const mergedProviders = Array.from(new Set([...existingProviders, ...providers]));
-  const hasNewProvider = mergedProviders.length > existingProviders.length;
-  const resolvedPrimaryProvider =
-    event.type === 'user.created' || hasNewProvider
-      ? providerName
-      : (existingProfile?.auth_provider ?? providerName);
-
-  const { error } = await profilesTable.upsert(
-    {
-      id,
-      email,
-      display_name: displayName,
-      auth_provider: resolvedPrimaryProvider,
-      auth_providers: mergedProviders,
-    },
-    { onConflict: 'id' }
+  const { error } = await syncClerkProfileToSupabase(
+    toPayload(event.data, email),
+    event.type,
   );
 
   if (error) {
-    console.error('[clerk webhook] Supabase error:', error);
-    return NextResponse.json({ error: `Supabase upsert failed: ${error.message}` }, { status: 500 });
+    return NextResponse.json(
+      { error: `Supabase upsert failed: ${error.message}` },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ success: true }, { status: 200 });
