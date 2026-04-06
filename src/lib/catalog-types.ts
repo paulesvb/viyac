@@ -29,6 +29,12 @@ export type CatalogTrackRow = {
   visibility: 'private' | 'public' | 'unlisted';
   content_type: 'audio' | 'video';
   provenance_type: ProvenanceType | null;
+  /** Standard stream (HLS or ~256k AAC URL); optional vs vault `track_path`. */
+  stream_url: string | null;
+  /** Private storage object key for master WAV; signed URL via master-download API after purchase. */
+  master_download_url: string | null;
+  /** Times a master signed URL was issued via the API for this track. */
+  master_download_count: number;
   track_path: string;
   waveform_json_path: string | null;
   waveform_json_vault_path: string | null;
