@@ -31,6 +31,25 @@ function getPreferredProvider(
   return normalizeProvider(accounts[accounts.length - 1]?.provider);
 }
 
+/** Plain object for logs — PostgREST `Error` subclasses often show as `{}` in the Next.js dev overlay. */
+function supabaseErrorFields(err: unknown): Record<string, string> {
+  if (!err || typeof err !== 'object') {
+    return { message: String(err) };
+  }
+  const o = err as Record<string, unknown>;
+  const pick = (k: string) =>
+    typeof o[k] === 'string' && o[k] ? { [k]: o[k] as string } : {};
+  return {
+    message:
+      typeof o.message === 'string' && o.message
+        ? o.message
+        : 'Supabase request failed',
+    ...pick('code'),
+    ...pick('details'),
+    ...pick('hint'),
+  };
+}
+
 /**
  * Upserts `public.profiles` (or SUPABASE_PROFILES_SCHEMA) — shared by Clerk webhook and session sync.
  */
@@ -47,6 +66,12 @@ export async function syncClerkProfileToSupabase(
 
   const profilesSchema = process.env.SUPABASE_PROFILES_SCHEMA ?? 'public';
 
+  if (process.env.NODE_ENV === 'development' && profilesSchema === 'api') {
+    console.warn(
+      '[clerk-profile-sync] SUPABASE_PROFILES_SCHEMA=api — migrations only create public.profiles. Unset this env var or set it to public.',
+    );
+  }
+
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -59,10 +84,24 @@ export async function syncClerkProfileToSupabase(
   const providers = extractProviders(payload.externalAccounts);
   const providerName = getPreferredProvider(payload.externalAccounts);
 
-  const { data: existingProfile } = await profilesTable
+  const { data: existingProfile, error: selectError } = await profilesTable
     .select('auth_provider, auth_providers')
     .eq('id', payload.id)
     .maybeSingle();
+
+  if (selectError) {
+    console.error(
+      '[clerk-profile-sync] profiles select',
+      supabaseErrorFields(selectError),
+    );
+    return {
+      error: {
+        message:
+          selectError.message ||
+          'Could not read profiles row (check SUPABASE_PROFILES_SCHEMA and migrations).',
+      },
+    };
+  }
 
   const existingProviders = Array.isArray(existingProfile?.auth_providers)
     ? (existingProfile.auth_providers as string[])
@@ -89,8 +128,14 @@ export async function syncClerkProfileToSupabase(
   );
 
   if (error) {
-    console.error('[clerk-profile-sync]', error);
-    return { error: { message: error.message } };
+    console.error('[clerk-profile-sync] profiles upsert', supabaseErrorFields(error));
+    return {
+      error: {
+        message:
+          error.message ||
+          'Profile upsert failed (see server log for code/details).',
+      },
+    };
   }
 
   return { error: null };
