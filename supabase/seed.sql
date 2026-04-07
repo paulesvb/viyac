@@ -1,0 +1,3 @@
+-- Catalog + profiles seed is applied via app script (needs your Clerk user id):
+--   npm run seed:catalog
+-- See supabase/README.md and SEED_CLERK_USER_ID in .env.example.

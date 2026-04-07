@@ -26,3 +26,17 @@ Single migration defining:
 **Clerk + RLS:** Policies use `auth.jwt()->>'sub'`. Until Clerk JWT is wired into Supabase, use **Next.js routes + service role** (see `createServiceCatalog()`).
 
 **Masters:** Insert into `api.track_master_purchases` after payment. `GET /api/catalog/tracks/[trackId]/master-download` returns a signed URL. Optional env **`SUPABASE_MASTER_BUCKET`** (defaults to bucket `vault`).
+
+## Seed data
+
+After migrations, set **`SEED_CLERK_USER_ID`** in `.env.local` (Clerk Dashboard → Users → copy User ID, e.g. `user_...`). Optionally **`SEED_VAULT_TRACK_PATH`** for a real vault HLS key.
+
+```bash
+npm run seed:catalog
+```
+
+This upserts **`public.profiles`** for that user (placeholder email), two **`api.tracks`** (`seed-demo-a` / `seed-demo-b`), one public **`api.albums`** (`seed-vault-demo`), and **`api.album_tracks`**. Re-running is safe (fixed UUIDs).
+
+Playback still needs **`track_path`** to exist in the **vault** bucket (or change env + re-seed). To use catalog listen/ratings in the player, add the seeded track UUID to **`catalog_track_id`** in `dashboard-tracks.ts` (IDs are logged in script output — or query `api.tracks`).
+
+`supabase/seed.sql` is a stub; local **`supabase db reset`** runs it after migrations — use **`npm run seed:catalog`** for real data.

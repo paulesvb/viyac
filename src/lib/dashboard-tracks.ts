@@ -60,8 +60,30 @@ export function getFeaturedDashboardTrack(): DashboardTrack | null {
 export function getOtherDashboardTracks(): DashboardTrack[] {
   const tracks = getDashboardTracks();
   const featured = getFeaturedDashboardTrack();
+  return getOtherDashboardTracksFromList(tracks, featured);
+}
+
+/** Marquee track from an explicit list (e.g. catalog + config merge on the server). */
+export function getFeaturedDashboardTrackFromList(
+  tracks: DashboardTrack[],
+): DashboardTrack | null {
+  if (tracks.length === 0) return null;
+  const marked = tracks.find((t) => t.featured === true);
+  return marked ?? tracks[0] ?? null;
+}
+
+/** Tracks in `tracks` that are not the featured row (stable when slugs collide via `catalog_track_id`). */
+export function getOtherDashboardTracksFromList(
+  tracks: DashboardTrack[],
+  featured: DashboardTrack | null,
+): DashboardTrack[] {
   if (!featured) return [];
-  return tracks.filter((t) => t.slug !== featured.slug);
+  return tracks.filter((t) => {
+    if (featured.catalog_track_id && t.catalog_track_id) {
+      return t.catalog_track_id !== featured.catalog_track_id;
+    }
+    return t.slug !== featured.slug;
+  });
 }
 
 function resolveBgImageUrl(track: DashboardTrack): string {

@@ -1,13 +1,12 @@
 import type { Metadata } from 'next';
+import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { TrackRatingPanel } from '@/components/TrackRatingPanel';
 import { VaultPlayer } from '@/components/VaultPlayer';
 import { isCatalogTrackId } from '@/lib/catalog-track-id';
-import {
-  getDashboardTrackBySlug,
-  toVaultTrackData,
-} from '@/lib/dashboard-tracks';
+import { resolveTrackForMusicPage } from '@/lib/catalog-from-supabase';
+import { toVaultTrackData } from '@/lib/dashboard-tracks';
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -17,14 +16,16 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const track = getDashboardTrackBySlug(slug);
+  const { userId } = await auth();
+  const track = await resolveTrackForMusicPage(userId ?? null, slug);
   if (!track) return { title: 'Track' };
   return { title: `${track.title} | Music` };
 }
 
 export default async function MusicTrackPage({ params }: PageProps) {
   const { slug } = await params;
-  const track = getDashboardTrackBySlug(slug);
+  const { userId } = await auth();
+  const track = await resolveTrackForMusicPage(userId ?? null, slug);
   if (!track) notFound();
 
   const vaultData = toVaultTrackData(track);
