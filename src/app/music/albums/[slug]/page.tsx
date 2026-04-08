@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ProvenanceBadge } from '@/components/ProvenanceBadge';
 import { getAccessibleAlbumWithTracksBySlug } from '@/lib/catalog-from-supabase';
+import { buildCompactTrackMetaLine, formatTagLabel, normalizeTagList } from '@/lib/track-meta';
 import { resolvePublicAssetsUrl } from '@/lib/storage';
 
 type PageProps = {
@@ -89,6 +90,10 @@ export default async function AlbumPage({ params }: PageProps) {
           <ul className="grid gap-3 sm:grid-cols-2">
             {tracks.map((track) => {
               const posterUrl = getTrackPosterUrl(track);
+              const metaLine = buildCompactTrackMetaLine(track);
+              const instrumentsLine = normalizeTagList(track.instruments)
+                .map(formatTagLabel)
+                .join(', ');
               return (
                 <li key={track.catalog_track_id ?? track.slug}>
                   <Link
@@ -120,13 +125,27 @@ export default async function AlbumPage({ params }: PageProps) {
                       <div className="flex items-center gap-2">
                         <p className="truncate font-medium text-foreground">{track.title}</p>
                         <ProvenanceBadge type={track.provenance_type} />
+                        {track.is_instrumental ? (
+                          <span className="rounded-full border border-zinc-500/50 bg-zinc-900/80 px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-zinc-200">
+                            Instrumental
+                          </span>
+                        ) : null}
                       </div>
                       {track.description_en ? (
                         <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                           {track.description_en}
                         </p>
                       ) : null}
-                      <p className="mt-2 text-xs text-muted-foreground">Open player →</p>
+                      {metaLine ? (
+                        <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground/90">
+                          {metaLine}
+                        </p>
+                      ) : null}
+                      {instrumentsLine ? (
+                        <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+                          Instruments: {instrumentsLine}
+                        </p>
+                      ) : null}
                     </div>
                   </Link>
                 </li>

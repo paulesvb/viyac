@@ -29,4 +29,14 @@ export type DashboardTrack = {
   catalog_track_id?: string;
   /** Optional catalog provenance badge (GENESIS / HYBRID / ECHO). */
   provenance_type?: ProvenanceType;
+  /** Style tags from `api.tracks.genres`. */
+  genres?: string[];
+  /** Instrument tags from `api.tracks.instruments`. */
+  instruments?: string[];
+  /** Marketing flag for instrumental (no lead vocal). */
+  is_instrumental?: boolean;
+  /** ISO date `YYYY-MM-DD`; use 1st of month for month/year releases. */
+  release_date?: string;
+  /** Track length for UI (`api.tracks.duration_ms`). */
+  duration_ms?: number;
 };

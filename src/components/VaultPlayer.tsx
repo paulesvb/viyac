@@ -17,6 +17,11 @@ import {
   type ParsedWaveform,
 } from '@/lib/waveform-json';
 import { ProvenanceBadge } from '@/components/ProvenanceBadge';
+import {
+  buildCompactTrackMetaLine,
+  formatTagLabel,
+  normalizeTagList,
+} from '@/lib/track-meta';
 import { fetchVaultSignedUrl } from '@/lib/vault-signed-url-client';
 import { resolvePublicAssetsUrl } from '@/lib/storage';
 import { vaultStreamUrl } from '@/lib/vault-stream';
@@ -48,6 +53,12 @@ export type VaultTrackData = {
   catalog_track_id?: string;
   /** Optional catalog provenance marker shown under player metadata. */
   provenance_type?: 'genesis' | 'hybrid' | 'echo';
+  genres?: string[];
+  instruments?: string[];
+  is_instrumental?: boolean;
+  /** ISO `YYYY-MM-DD` (use 1st of month for month/year). */
+  release_date?: string;
+  duration_ms?: number;
 };
 
 type VaultPlayerProps = {
@@ -62,6 +73,22 @@ function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function WaveformTimecode({
+  currentTime,
+  duration,
+}: {
+  currentTime: number;
+  duration: number;
+}) {
+  return (
+    <div className="text-sm tabular-nums text-zinc-300">
+      <span>{formatTime(currentTime)}</span>
+      <span className="mx-1 text-[#7b2eff]/50">/</span>
+      <span>{formatTime(duration)}</span>
+    </div>
+  );
 }
 
 function isParsedWaveform(w: WaveformLoadState): w is ParsedWaveform {
@@ -134,6 +161,11 @@ export function VaultPlayer({
     description_en,
     description_es,
     provenance_type,
+    genres: genresProp,
+    instruments: instrumentsProp,
+    is_instrumental,
+    release_date,
+    duration_ms,
     waveform_json_path,
     waveform_json_url,
     waveform_json_vault_path,
@@ -656,6 +688,35 @@ export function VaultPlayer({
   const hasBothLang =
     Boolean(description_en?.trim()) && Boolean(description_es?.trim());
 
+  const instrumentList = useMemo(
+    () => normalizeTagList(instrumentsProp),
+    [instrumentsProp],
+  );
+  const compactMetaLine = useMemo(
+    () =>
+      buildCompactTrackMetaLine(
+        {
+          release_date,
+          duration_ms,
+          genres: genresProp,
+        },
+        { includeDuration: false },
+      ),
+    [release_date, duration_ms, genresProp],
+  );
+  const instrumentsLine = useMemo(
+    () => instrumentList.map(formatTagLabel).join(', '),
+    [instrumentList],
+  );
+
+  const hasBottomMeta =
+    Boolean(title?.trim()) ||
+    Boolean(description_en?.trim() || description_es?.trim()) ||
+    Boolean(provenance_type) ||
+    instrumentList.length > 0 ||
+    Boolean(is_instrumental) ||
+    Boolean(compactMetaLine);
+
   const embedded = variant === 'embedded';
   const layer = embedded ? 'absolute' : 'fixed';
   const verticalAlign = embedded ? 'justify-center' : 'justify-start sm:justify-center';
@@ -782,38 +843,35 @@ export function VaultPlayer({
                   {!mediaReady ? <p>Loading stream…</p> : null}
                 </div>
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                  <button
-                    type="button"
-                    onClick={togglePlay}
-                    className={`${playBtnClass} h-12 w-12`}
-                    aria-label={playing ? 'Pause' : 'Play'}
-                  >
-                    {playing ? (
-                      <Pause className="h-5 w-5" fill="currentColor" />
-                    ) : (
-                      <Play className="h-5 w-5 pl-0.5" fill="currentColor" />
-                    )}
-                  </button>
-                  <div className="min-w-0 flex-1 space-y-2">
-                    {waveformState === 'loading' ? (
-                      <div
-                        className={`${waveformShellClass} flex items-center justify-center text-xs text-[#00f2ff]/70`}
-                      >
-                        Loading waveform…
-                      </div>
-                    ) : (
-                      <div
-                        key={`wf-${track_path}`}
-                        ref={waveformContainerRef}
-                        className={waveformShellClass}
-                        onContextMenu={(e) => e.preventDefault()}
-                      />
-                    )}
-                    <div className="flex justify-between text-xs tabular-nums text-zinc-400">
-                      <span>{formatTime(currentTime)}</span>
-                      <span>{formatTime(duration)}</span>
+                <div className="w-full space-y-3">
+                  {waveformState === 'loading' ? (
+                    <div
+                      className={`${waveformShellClass} flex items-center justify-center text-xs text-[#00f2ff]/70`}
+                    >
+                      Loading waveform…
                     </div>
+                  ) : (
+                    <div
+                      key={`wf-${track_path}`}
+                      ref={waveformContainerRef}
+                      className={waveformShellClass}
+                      onContextMenu={(e) => e.preventDefault()}
+                    />
+                  )}
+                  <div className="flex flex-col items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      className={`${playBtnClass} h-14 w-14`}
+                      aria-label={playing ? 'Pause' : 'Play'}
+                    >
+                      {playing ? (
+                        <Pause className="h-7 w-7" fill="currentColor" />
+                      ) : (
+                        <Play className="h-7 w-7 pl-1" fill="currentColor" />
+                      )}
+                    </button>
+                    <WaveformTimecode currentTime={currentTime} duration={duration} />
                   </div>
                 </div>
               </div>
@@ -840,38 +898,35 @@ export function VaultPlayer({
                   ) : null}
                 </div>
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                  <button
-                    type="button"
-                    onClick={togglePlay}
-                    className={`${playBtnClass} h-12 w-12`}
-                    aria-label={playing ? 'Pause' : 'Play'}
-                  >
-                    {playing ? (
-                      <Pause className="h-5 w-5" fill="currentColor" />
-                    ) : (
-                      <Play className="h-5 w-5 pl-0.5" fill="currentColor" />
-                    )}
-                  </button>
-                  <div className="min-w-0 flex-1 space-y-2">
-                    {waveformState === 'loading' ? (
-                      <div
-                        className={`${waveformShellClass} flex items-center justify-center text-xs text-[#00f2ff]/70`}
-                      >
-                        Loading waveform…
-                      </div>
-                    ) : (
-                      <div
-                        key={`wf-${track_path}`}
-                        ref={waveformContainerRef}
-                        className={waveformShellClass}
-                        onContextMenu={(e) => e.preventDefault()}
-                      />
-                    )}
-                    <div className="flex justify-between text-xs tabular-nums text-zinc-400">
-                      <span>{formatTime(currentTime)}</span>
-                      <span>{formatTime(duration)}</span>
+                <div className="w-full space-y-3">
+                  {waveformState === 'loading' ? (
+                    <div
+                      className={`${waveformShellClass} flex items-center justify-center text-xs text-[#00f2ff]/70`}
+                    >
+                      Loading waveform…
                     </div>
+                  ) : (
+                    <div
+                      key={`wf-${track_path}`}
+                      ref={waveformContainerRef}
+                      className={waveformShellClass}
+                      onContextMenu={(e) => e.preventDefault()}
+                    />
+                  )}
+                  <div className="flex flex-col items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      className={`${playBtnClass} h-14 w-14`}
+                      aria-label={playing ? 'Pause' : 'Play'}
+                    >
+                      {playing ? (
+                        <Pause className="h-7 w-7" fill="currentColor" />
+                      ) : (
+                        <Play className="h-7 w-7 pl-1" fill="currentColor" />
+                      )}
+                    </button>
+                    <WaveformTimecode currentTime={currentTime} duration={duration} />
                   </div>
                 </div>
               </div>
@@ -918,7 +973,7 @@ export function VaultPlayer({
                   </div>
 
                   <div
-                    className={`w-full space-y-4 ${embedded ? 'max-w-none' : 'max-w-md'}`}
+                    className={`w-full space-y-3 ${embedded ? 'max-w-none' : 'max-w-md'}`}
                   >
                     {waveformState === 'loading' ? (
                       <div
@@ -934,7 +989,7 @@ export function VaultPlayer({
                         onContextMenu={(e) => e.preventDefault()}
                       />
                     )}
-                    <div className="flex items-center justify-center gap-4">
+                    <div className="flex flex-col items-center gap-3">
                       <button
                         type="button"
                         onClick={togglePlay}
@@ -947,11 +1002,7 @@ export function VaultPlayer({
                           <Play className="h-7 w-7 pl-1" fill="currentColor" />
                         )}
                       </button>
-                      <div className="text-sm tabular-nums text-zinc-300">
-                        <span>{formatTime(currentTime)}</span>
-                        <span className="mx-1 text-[#7b2eff]/50">/</span>
-                        <span>{formatTime(duration)}</span>
-                      </div>
+                      <WaveformTimecode currentTime={currentTime} duration={duration} />
                     </div>
                   </div>
                 </div>
@@ -959,12 +1010,21 @@ export function VaultPlayer({
             )}
           </div>
 
-          {(title || description) && (
+          {hasBottomMeta ? (
             <div className="mt-8 space-y-3 border-t border-white/10 pt-6">
-              {title ? (
-                <h1 className="text-center text-xl font-semibold tracking-tight text-white drop-shadow-[0_0_18px_rgba(0,242,255,0.2)] sm:text-2xl">
-                  {title}
-                </h1>
+              {title?.trim() || is_instrumental ? (
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  {title?.trim() ? (
+                    <h1 className="text-center text-xl font-semibold tracking-tight text-white drop-shadow-[0_0_18px_rgba(0,242,255,0.2)] sm:text-2xl">
+                      {title}
+                    </h1>
+                  ) : null}
+                  {is_instrumental ? (
+                    <span className="rounded-full border border-zinc-500/50 bg-zinc-900/80 px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-zinc-200">
+                      Instrumental
+                    </span>
+                  ) : null}
+                </div>
               ) : null}
 
               {(description_en?.trim() || description_es?.trim()) && (
@@ -1003,13 +1063,25 @@ export function VaultPlayer({
                 </div>
               )}
 
+              {compactMetaLine ? (
+                <p className="text-center text-xs tabular-nums text-zinc-500">
+                  {compactMetaLine}
+                </p>
+              ) : null}
+
+              {instrumentsLine ? (
+                <p className="text-center text-xs text-zinc-500">
+                  Instruments: {instrumentsLine}
+                </p>
+              ) : null}
+
               {provenance_type ? (
                 <div className="flex justify-center pt-1">
                   <ProvenanceBadge type={provenance_type} />
                 </div>
               ) : null}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

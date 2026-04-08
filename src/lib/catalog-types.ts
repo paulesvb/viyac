@@ -22,6 +22,13 @@ export type CatalogTrackRow = {
   isrc_code: string | null;
   owner_id: string;
   genre: string | null;
+  /** Style tags; prefer over legacy `genre` when set. */
+  genres?: string[] | null;
+  /** Instrument tags (e.g. piano, guitar). */
+  instruments?: string[] | null;
+  is_instrumental?: boolean | null;
+  /** First day of month for month/year display (e.g. 2026-04-01). */
+  release_date?: string | null;
   composer: string | null;
   tc: string | null;
   duration_ms: number | null;

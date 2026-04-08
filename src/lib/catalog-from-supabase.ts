@@ -4,6 +4,7 @@ import { createServiceCatalog } from '@/lib/supabase-catalog';
 import type { CatalogAlbumRow, CatalogTrackRow } from '@/lib/catalog-types';
 import { getCatalogTrackIfAccessible } from '@/lib/catalog-track-access';
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
+import { normalizeTagList } from '@/lib/track-meta';
 
 type AlbumsJoinRow = {
   track_id: string;
@@ -99,6 +100,11 @@ export function catalogRowToDashboardTrack(
     description_en: row.description_en ?? undefined,
     description_es: row.description_es ?? undefined,
     provenance_type: row.provenance_type ?? undefined,
+    genres: normalizeTagList(row.genres),
+    instruments: normalizeTagList(row.instruments),
+    is_instrumental: Boolean(row.is_instrumental),
+    release_date: row.release_date ?? undefined,
+    duration_ms: row.duration_ms ?? undefined,
     waveform_json_path: row.waveform_json_path ?? undefined,
     waveform_json_vault_path: row.waveform_json_vault_path ?? undefined,
     vault_background_video_path: row.vault_background_video_path ?? undefined,

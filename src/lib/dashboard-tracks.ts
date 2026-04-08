@@ -124,6 +124,11 @@ export function toVaultTrackData(track: DashboardTrack): VaultTrackData {
     description_en: track.description_en,
     description_es: track.description_es,
     provenance_type: track.provenance_type,
+    genres: track.genres,
+    instruments: track.instruments,
+    is_instrumental: track.is_instrumental,
+    release_date: track.release_date,
+    duration_ms: track.duration_ms,
     ...(wfVault
       ? { waveform_json_vault_path: wfVault }
       : wfPublic
@@ -135,5 +140,10 @@ export function toVaultTrackData(track: DashboardTrack): VaultTrackData {
     ...(track.catalog_track_id?.trim()
       ? { catalog_track_id: track.catalog_track_id.trim() }
       : {}),
+    ...(track.genres?.length ? { genres: track.genres } : {}),
+    ...(track.instruments?.length ? { instruments: track.instruments } : {}),
+    ...(track.is_instrumental ? { is_instrumental: true } : {}),
+    ...(track.release_date?.trim() ? { release_date: track.release_date.trim() } : {}),
+    ...(track.duration_ms != null ? { duration_ms: track.duration_ms } : {}),
   };
 }
