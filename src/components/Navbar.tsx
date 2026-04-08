@@ -10,8 +10,17 @@ export function Navbar() {
   return (
     <nav className="relative z-50 border-b bg-background">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href="/" className="text-xl font-bold">
-          Viyac
+        <Link href="/" className="flex items-center gap-2 text-xl font-bold">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.svg"
+            alt="Viyac logo"
+            width={32}
+            height={32}
+            className="h-8 w-8 shrink-0"
+            decoding="async"
+          />
+          <span>Viyac</span>
         </Link>
 
         <div className="flex min-h-8 items-center gap-4">
