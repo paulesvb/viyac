@@ -56,6 +56,10 @@ export type VaultTrackData = {
   genres?: string[];
   instruments?: string[];
   is_instrumental?: boolean;
+  /** Catalog: not linked to any album (standalone single). */
+  is_single?: boolean;
+  /** Containing album title when `is_single === false` (player second line vs descriptions). */
+  album_title?: string;
   /** ISO `YYYY-MM-DD` (use 1st of month for month/year). */
   release_date?: string;
   duration_ms?: number;
@@ -164,6 +168,8 @@ export function VaultPlayer({
     genres: genresProp,
     instruments: instrumentsProp,
     is_instrumental,
+    is_single,
+    album_title,
     release_date,
     duration_ms,
     waveform_json_path,
@@ -709,12 +715,20 @@ export function VaultPlayer({
     [instrumentList],
   );
 
+  const albumSecondLine =
+    is_single === false && Boolean(album_title?.trim());
+  const showDescriptionBlock =
+    !albumSecondLine &&
+    Boolean(description_en?.trim() || description_es?.trim());
+
   const hasBottomMeta =
     Boolean(title?.trim()) ||
-    Boolean(description_en?.trim() || description_es?.trim()) ||
+    showDescriptionBlock ||
+    albumSecondLine ||
     Boolean(provenance_type) ||
     instrumentList.length > 0 ||
     Boolean(is_instrumental) ||
+    Boolean(is_single) ||
     Boolean(compactMetaLine);
 
   const embedded = variant === 'embedded';
@@ -1012,12 +1026,17 @@ export function VaultPlayer({
 
           {hasBottomMeta ? (
             <div className="mt-8 space-y-3 border-t border-white/10 pt-6">
-              {title?.trim() || is_instrumental ? (
+              {title?.trim() || is_instrumental || is_single ? (
                 <div className="flex flex-wrap items-center justify-center gap-2">
                   {title?.trim() ? (
                     <h1 className="text-center text-xl font-semibold tracking-tight text-white drop-shadow-[0_0_18px_rgba(0,242,255,0.2)] sm:text-2xl">
                       {title}
                     </h1>
+                  ) : null}
+                  {is_single ? (
+                    <span className="rounded-full border border-teal-400/35 bg-teal-950/70 px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-teal-200">
+                      Single
+                    </span>
                   ) : null}
                   {is_instrumental ? (
                     <span className="rounded-full border border-zinc-500/50 bg-zinc-900/80 px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-zinc-200">
@@ -1027,7 +1046,11 @@ export function VaultPlayer({
                 </div>
               ) : null}
 
-              {(description_en?.trim() || description_es?.trim()) && (
+              {albumSecondLine ? (
+                <p className="text-center text-sm leading-relaxed text-zinc-400 sm:text-base">
+                  {album_title?.trim()}
+                </p>
+              ) : showDescriptionBlock ? (
                 <div className="space-y-2">
                   {hasBothLang ? (
                     <div className="flex justify-center gap-2">
@@ -1061,7 +1084,7 @@ export function VaultPlayer({
                     </p>
                   ) : null}
                 </div>
-              )}
+              ) : null}
 
               {compactMetaLine ? (
                 <p className="text-center text-xs tabular-nums text-zinc-500">

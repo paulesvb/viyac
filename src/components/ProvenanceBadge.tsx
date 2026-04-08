@@ -16,29 +16,48 @@ const variantClass: Record<ProvenanceType, string> = {
 type ProvenanceBadgeProps = {
   type: ProvenanceType | string | null | undefined;
   className?: string;
+  /** When false, only the label is shown (e.g. dense track cards). Default true. */
+  showTooltip?: boolean;
 };
 
 /**
  * Small retrofuturist pill for track provenance; hover or focus shows chain-of-creation copy.
  * Wire next to track titles when the catalog UI lands.
  */
-export function ProvenanceBadge({ type, className }: ProvenanceBadgeProps) {
+export function ProvenanceBadge({
+  type,
+  className,
+  showTooltip = true,
+}: ProvenanceBadgeProps) {
   if (type == null || !isProvenanceType(type)) return null;
 
   const meta = PROVENANCE_META[type];
 
+  const label = (
+    <span
+      tabIndex={showTooltip ? 0 : undefined}
+      className={cn(
+        'inline-flex cursor-default items-center rounded-full border px-1.5 py-px font-mono text-[10px] font-medium uppercase tracking-[0.14em] outline-none transition-colors',
+        showTooltip &&
+          'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        variantClass[type],
+      )}
+    >
+      {meta.label}
+    </span>
+  );
+
+  if (!showTooltip) {
+    return (
+      <span className={cn('inline-flex shrink-0 align-middle', className)}>
+        {label}
+      </span>
+    );
+  }
+
   return (
     <span className={cn('group relative inline-flex shrink-0 align-middle', className)}>
-      <span
-        tabIndex={0}
-        className={cn(
-          'inline-flex cursor-default items-center rounded-full border px-1.5 py-px font-mono text-[10px] font-medium uppercase tracking-[0.14em] outline-none transition-colors',
-          'focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-          variantClass[type],
-        )}
-      >
-        {meta.label}
-      </span>
+      {label}
       <span
         role="tooltip"
         className={cn(

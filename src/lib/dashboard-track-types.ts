@@ -35,6 +35,13 @@ export type DashboardTrack = {
   instruments?: string[];
   /** Marketing flag for instrumental (no lead vocal). */
   is_instrumental?: boolean;
+  /**
+   * When true, catalog track is not linked to any album (`album_tracks`) — a standalone single.
+   * Omitted for static config tracks when unknown.
+   */
+  is_single?: boolean;
+  /** Display name of a containing album (for cards when `is_single` is false). */
+  album_title?: string;
   /** ISO date `YYYY-MM-DD`; use 1st of month for month/year releases. */
   release_date?: string;
   /** Track length for UI (`api.tracks.duration_ms`). */

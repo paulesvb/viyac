@@ -11,7 +11,12 @@ import {
   getFeaturedDashboardTrackFromList,
   getOtherDashboardTracksFromList,
 } from '@/lib/dashboard-tracks';
-import { buildCompactTrackMetaLine, formatTagLabel, normalizeTagList } from '@/lib/track-meta';
+import {
+  buildCompactTrackMetaLine,
+  formatTagLabel,
+  getTrackCardSecondLine,
+  normalizeTagList,
+} from '@/lib/track-meta';
 import { resolvePublicAssetsUrl } from '@/lib/storage';
 
 type Props = {
@@ -119,6 +124,7 @@ export default function DashboardPageClient({ tracks, albums }: Props) {
           <ul className="grid gap-3 sm:grid-cols-2">
             {otherTracks.map((track) => {
               const posterUrl = getTrackPosterUrl(track);
+              const secondLine = getTrackCardSecondLine(track);
               const metaLine = buildCompactTrackMetaLine(track);
               const instrumentsLine = normalizeTagList(track.instruments)
                 .map(formatTagLabel)
@@ -127,23 +133,15 @@ export default function DashboardPageClient({ tracks, albums }: Props) {
               <li key={track.catalog_track_id ?? track.slug}>
                 <Link
                   href={`/music/tracks/${encodeURIComponent(track.slug)}`}
-                  className="group relative flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition hover:border-cyan-500/40 hover:bg-muted/40"
+                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition hover:border-cyan-500/40 hover:bg-muted/40"
                 >
                   {posterUrl ? (
-                    <div className="relative h-16 w-16 shrink-0 overflow-visible rounded-md ring-1 ring-border/60">
+                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md ring-1 ring-border/60">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={posterUrl}
                         alt={`${track.title} poster`}
                         className="absolute inset-0 h-full w-full rounded-md object-cover"
-                      />
-                      {/* Detached hover preview (outside thumbnail bounds). */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={posterUrl}
-                        alt=""
-                        aria-hidden
-                        className="pointer-events-none absolute left-1/2 top-1/2 z-20 h-full w-full -translate-x-1/2 -translate-y-1/2 rounded-md object-cover opacity-0 shadow-2xl ring-1 ring-cyan-400/40 transition duration-200 group-hover:opacity-100 group-hover:scale-[3]"
                       />
                     </div>
                   ) : (
@@ -154,16 +152,24 @@ export default function DashboardPageClient({ tracks, albums }: Props) {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate font-medium text-foreground">{track.title}</p>
-                      <ProvenanceBadge type={track.provenance_type} />
+                      <ProvenanceBadge
+                        type={track.provenance_type}
+                        showTooltip={false}
+                      />
+                      {track.is_single ? (
+                        <span className="rounded-full border border-teal-500/40 bg-teal-950/50 px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-teal-200">
+                          Single
+                        </span>
+                      ) : null}
                       {track.is_instrumental ? (
                         <span className="rounded-full border border-zinc-500/50 bg-zinc-900/80 px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-zinc-200">
                           Instrumental
                         </span>
                       ) : null}
                     </div>
-                    {track.description_en ? (
+                    {secondLine ? (
                       <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                        {track.description_en}
+                        {secondLine.text}
                       </p>
                     ) : null}
                     {metaLine ? (

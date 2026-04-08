@@ -40,6 +40,75 @@ function joinTrack(
   return Array.isArray(tracks) ? (tracks[0] ?? null) : tracks;
 }
 
+/** Track IDs that appear in at least one `album_tracks` row. */
+async function fetchTrackIdsLinkedToAlbums(
+  supabase: ReturnType<typeof createServiceCatalog>,
+  trackIds: string[],
+): Promise<Set<string>> {
+  if (trackIds.length === 0) return new Set();
+  const { data, error } = await supabase
+    .from('album_tracks')
+    .select('track_id')
+    .in('track_id', trackIds);
+  if (error || !data?.length) return new Set();
+  return new Set(data.map((r) => r.track_id as string));
+}
+
+async function isTrackLinkedToAnyAlbum(
+  supabase: ReturnType<typeof createServiceCatalog>,
+  trackId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('album_tracks')
+    .select('track_id')
+    .eq('track_id', trackId)
+    .limit(1);
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
+}
+
+type AlbumTitleJoinRow = {
+  track_id: string;
+  albums: { title: string; sort_order: number } | { title: string; sort_order: number }[] | null;
+};
+
+/** One display title per track when it appears on album(s): lowest `albums.sort_order`, then title. */
+async function fetchPrimaryAlbumTitleByTrackIds(
+  supabase: ReturnType<typeof createServiceCatalog>,
+  trackIds: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (trackIds.length === 0) return out;
+  const { data, error } = await supabase
+    .from('album_tracks')
+    .select('track_id, albums ( title, sort_order )')
+    .in('track_id', trackIds);
+  if (error || !data?.length) return out;
+
+  const best = new Map<string, { sort_order: number; title: string }>();
+  for (const raw of data as AlbumTitleJoinRow[]) {
+    const tid = raw.track_id as string;
+    const al = raw.albums;
+    if (!al) continue;
+    const album = Array.isArray(al) ? al[0] : al;
+    if (!album?.title?.trim()) continue;
+    const so = album.sort_order ?? 0;
+    const title = album.title.trim();
+    const prev = best.get(tid);
+    if (
+      !prev ||
+      so < prev.sort_order ||
+      (so === prev.sort_order && title.localeCompare(prev.title) < 0)
+    ) {
+      best.set(tid, { sort_order: so, title });
+    }
+  }
+  for (const [tid, v] of best) {
+    out.set(tid, v.title);
+  }
+  return out;
+}
+
 /**
  * Tracks the signed-in user may play: owned, public/unlisted, or on a public/unlisted album.
  */
@@ -90,6 +159,7 @@ export async function listAccessibleCatalogTrackRows(
 export function catalogRowToDashboardTrack(
   row: CatalogTrackRow,
   featured: boolean,
+  extras?: { is_single?: boolean; album_title?: string },
 ): DashboardTrack {
   return {
     slug: row.slug,
@@ -103,6 +173,10 @@ export function catalogRowToDashboardTrack(
     genres: normalizeTagList(row.genres),
     instruments: normalizeTagList(row.instruments),
     is_instrumental: Boolean(row.is_instrumental),
+    ...(extras?.is_single !== undefined ? { is_single: extras.is_single } : {}),
+    ...(extras?.album_title?.trim()
+      ? { album_title: extras.album_title.trim() }
+      : {}),
     release_date: row.release_date ?? undefined,
     duration_ms: row.duration_ms ?? undefined,
     waveform_json_path: row.waveform_json_path ?? undefined,
@@ -123,9 +197,21 @@ export async function fetchDashboardTracksFromCatalog(
     const rows = await listAccessibleCatalogTrackRows(userId);
     if (rows.length === 0) return [];
     const hasFeatured = rows.some((r) => r.featured);
-    return rows.map((r, i) =>
-      catalogRowToDashboardTrack(r, hasFeatured ? r.featured : i === 0),
+    const supabase = createServiceCatalog();
+    const trackIds = rows.map((r) => r.id);
+    const onAlbumIds = await fetchTrackIdsLinkedToAlbums(supabase, trackIds);
+    const albumTitles = await fetchPrimaryAlbumTitleByTrackIds(
+      supabase,
+      trackIds,
     );
+    return rows.map((r, i) => {
+      const onAlbum = onAlbumIds.has(r.id);
+      const albumTitle = albumTitles.get(r.id);
+      return catalogRowToDashboardTrack(r, hasFeatured ? r.featured : i === 0, {
+        is_single: !onAlbum,
+        ...(onAlbum && albumTitle ? { album_title: albumTitle } : {}),
+      });
+    });
   } catch (e) {
     console.error('[fetchDashboardTracksFromCatalog]', e);
     return [];
@@ -217,7 +303,12 @@ export async function getAccessibleAlbumWithTracksBySlug(
     const id = joined?.id ?? r.track_id;
     const allowed = await getCatalogTrackIfAccessible(supabase, userId, id);
     if (!allowed) continue;
-    tracks.push(catalogRowToDashboardTrack(allowed, false));
+    tracks.push(
+      catalogRowToDashboardTrack(allowed, false, {
+        is_single: false,
+        album_title: a.title,
+      }),
+    );
   }
 
   return { album: a, tracks };
@@ -247,7 +338,15 @@ export async function resolveTrackForMusicPage(
           row.id,
         );
         if (allowed) {
-          return catalogRowToDashboardTrack(allowed, false);
+          const linked = await isTrackLinkedToAnyAlbum(supabase, allowed.id);
+          const albumTitles = linked
+            ? await fetchPrimaryAlbumTitleByTrackIds(supabase, [allowed.id])
+            : new Map<string, string>();
+          const albumTitle = albumTitles.get(allowed.id);
+          return catalogRowToDashboardTrack(allowed, false, {
+            is_single: !linked,
+            ...(linked && albumTitle ? { album_title: albumTitle } : {}),
+          });
         }
       }
     }

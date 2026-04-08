@@ -143,6 +143,14 @@ export function toVaultTrackData(track: DashboardTrack): VaultTrackData {
     ...(track.genres?.length ? { genres: track.genres } : {}),
     ...(track.instruments?.length ? { instruments: track.instruments } : {}),
     ...(track.is_instrumental ? { is_instrumental: true } : {}),
+    ...(track.is_single === true
+      ? { is_single: true }
+      : track.is_single === false
+        ? { is_single: false }
+        : {}),
+    ...(track.album_title?.trim()
+      ? { album_title: track.album_title.trim() }
+      : {}),
     ...(track.release_date?.trim() ? { release_date: track.release_date.trim() } : {}),
     ...(track.duration_ms != null ? { duration_ms: track.duration_ms } : {}),
   };

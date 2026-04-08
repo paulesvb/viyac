@@ -72,3 +72,23 @@ export function buildCompactTrackMetaLine(
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
+export type TrackCardSecondLine =
+  | { kind: 'description'; text: string }
+  | { kind: 'album'; text: string };
+
+/**
+ * Second line on track cards: catalog singles → English description when set;
+ * album tracks (`is_single === false`) → album title; static/unknown tracks fall back to description.
+ */
+export function getTrackCardSecondLine(
+  track: DashboardTrack,
+): TrackCardSecondLine | null {
+  if (track.is_single === false) {
+    const t = track.album_title?.trim();
+    if (t) return { kind: 'album', text: t };
+    return null;
+  }
+  const d = track.description_en?.trim();
+  if (d) return { kind: 'description', text: d };
+  return null;
+}
