@@ -61,11 +61,7 @@ export function DashboardFeaturedMarquee({ track }: Props) {
           <button
             type="button"
             onClick={() => setFullPlayer((v) => !v)}
-            className={`shrink-0 self-start text-xs font-medium underline-offset-4 sm:self-center ${
-              fullPlayer
-                ? 'rounded-full border border-fuchsia-400/40 bg-fuchsia-500/10 px-3 py-1 text-fuchsia-200 hover:bg-fuchsia-500/20'
-                : 'text-fuchsia-300/90 hover:text-fuchsia-200 hover:underline'
-            }`}
+            className="shrink-0 self-start rounded-full border border-fuchsia-400/40 bg-fuchsia-500/10 px-3 py-1 text-xs font-medium text-fuchsia-200 hover:bg-fuchsia-500/20 sm:self-center"
           >
             {fullPlayer ? 'Back to home' : 'Full page'}
           </button>

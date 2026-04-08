@@ -123,6 +123,7 @@ export function toVaultTrackData(track: DashboardTrack): VaultTrackData {
     title: track.title,
     description_en: track.description_en,
     description_es: track.description_es,
+    provenance_type: track.provenance_type,
     ...(wfVault
       ? { waveform_json_vault_path: wfVault }
       : wfPublic

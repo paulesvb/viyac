@@ -16,6 +16,7 @@ import {
   parseWaveformJson,
   type ParsedWaveform,
 } from '@/lib/waveform-json';
+import { ProvenanceBadge } from '@/components/ProvenanceBadge';
 import { fetchVaultSignedUrl } from '@/lib/vault-signed-url-client';
 import { resolvePublicAssetsUrl } from '@/lib/storage';
 import { vaultStreamUrl } from '@/lib/vault-stream';
@@ -45,6 +46,8 @@ export type VaultTrackData = {
   lock_screen_art_url?: string;
   /** When set, listen time is reported for catalog rating eligibility (UUID from `api.tracks`). */
   catalog_track_id?: string;
+  /** Optional catalog provenance marker shown under player metadata. */
+  provenance_type?: 'genesis' | 'hybrid' | 'echo';
 };
 
 type VaultPlayerProps = {
@@ -130,6 +133,7 @@ export function VaultPlayer({
     title,
     description_en,
     description_es,
+    provenance_type,
     waveform_json_path,
     waveform_json_url,
     waveform_json_vault_path,
@@ -998,6 +1002,12 @@ export function VaultPlayer({
                   ) : null}
                 </div>
               )}
+
+              {provenance_type ? (
+                <div className="flex justify-center pt-1">
+                  <ProvenanceBadge type={provenance_type} />
+                </div>
+              ) : null}
             </div>
           )}
         </div>
