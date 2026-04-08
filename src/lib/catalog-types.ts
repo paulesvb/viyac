@@ -43,6 +43,7 @@ export type CatalogTrackRow = {
   lock_screen_art_path: string | null;
   description_en: string | null;
   description_es: string | null;
+  featured: boolean;
   sort_order: number;
   created_at: string;
   updated_at: string;

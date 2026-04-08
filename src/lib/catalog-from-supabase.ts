@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createServiceCatalog } from '@/lib/supabase-catalog';
-import type { CatalogTrackRow } from '@/lib/catalog-types';
+import type { CatalogAlbumRow, CatalogTrackRow } from '@/lib/catalog-types';
 import { getCatalogTrackIfAccessible } from '@/lib/catalog-track-access';
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
 
@@ -10,12 +10,33 @@ type AlbumsJoinRow = {
   albums: { visibility: string } | { visibility: string }[] | null;
 };
 
+export type DashboardAlbum = {
+  id: string;
+  slug: string;
+  title: string;
+  cover_image_path?: string;
+  track_count: number;
+};
+
+type AlbumTrackJoinRow = {
+  track_id: string;
+  sort_order: number;
+  tracks: CatalogTrackRow | CatalogTrackRow[] | null;
+};
+
 function albumVisibility(
   albums: AlbumsJoinRow['albums'],
 ): string | undefined {
   if (!albums) return undefined;
   const row = Array.isArray(albums) ? albums[0] : albums;
   return row?.visibility;
+}
+
+function joinTrack(
+  tracks: AlbumTrackJoinRow['tracks'],
+): CatalogTrackRow | null {
+  if (!tracks) return null;
+  return Array.isArray(tracks) ? (tracks[0] ?? null) : tracks;
 }
 
 /**
@@ -59,6 +80,7 @@ export async function listAccessibleCatalogTrackRows(
   }
 
   return Array.from(map.values()).sort((a, b) => {
+    if (a.featured !== b.featured) return a.featured ? -1 : 1;
     if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
     return a.title.localeCompare(b.title);
   });
@@ -76,9 +98,11 @@ export function catalogRowToDashboardTrack(
     content_type: row.content_type === 'audio' ? 'audio' : 'video',
     description_en: row.description_en ?? undefined,
     description_es: row.description_es ?? undefined,
+    provenance_type: row.provenance_type ?? undefined,
     waveform_json_path: row.waveform_json_path ?? undefined,
     waveform_json_vault_path: row.waveform_json_vault_path ?? undefined,
     vault_background_video_path: row.vault_background_video_path ?? undefined,
+    thumbnail_url: row.thumbnail_path ?? undefined,
     bg_image_path: row.thumbnail_path ?? undefined,
     lock_screen_art_path: row.lock_screen_art_path ?? row.thumbnail_path ?? undefined,
     catalog_track_id: row.id,
@@ -92,11 +116,105 @@ export async function fetchDashboardTracksFromCatalog(
   try {
     const rows = await listAccessibleCatalogTrackRows(userId);
     if (rows.length === 0) return [];
-    return rows.map((r, i) => catalogRowToDashboardTrack(r, i === 0));
+    const hasFeatured = rows.some((r) => r.featured);
+    return rows.map((r, i) =>
+      catalogRowToDashboardTrack(r, hasFeatured ? r.featured : i === 0),
+    );
   } catch (e) {
     console.error('[fetchDashboardTracksFromCatalog]', e);
     return [];
   }
+}
+
+/**
+ * Albums visible on dashboard: owned + public/unlisted with at least one accessible track.
+ */
+export async function fetchDashboardAlbumsFromCatalog(
+  userId: string,
+): Promise<DashboardAlbum[]> {
+  try {
+    const supabase = createServiceCatalog();
+    const { data: albums, error } = await supabase
+      .from('albums')
+      .select('*')
+      .or(`owner_id.eq.${userId},visibility.eq.public,visibility.eq.unlisted`)
+      .order('sort_order', { ascending: true })
+      .order('title', { ascending: true });
+
+    if (error || !albums?.length) return [];
+
+    const out: DashboardAlbum[] = [];
+    for (const a of albums as CatalogAlbumRow[]) {
+      const { data: links } = await supabase
+        .from('album_tracks')
+        .select('track_id')
+        .eq('album_id', a.id);
+      const ids = (links ?? []).map((r) => r.track_id as string);
+      if (ids.length === 0) continue;
+
+      let count = 0;
+      for (const id of ids) {
+        const allowed = await getCatalogTrackIfAccessible(supabase, userId, id);
+        if (allowed) count += 1;
+      }
+      if (count === 0) continue;
+
+      out.push({
+        id: a.id,
+        slug: a.slug,
+        title: a.title,
+        cover_image_path: a.cover_image_path ?? undefined,
+        track_count: count,
+      });
+    }
+    return out;
+  } catch (e) {
+    console.error('[fetchDashboardAlbumsFromCatalog]', e);
+    return [];
+  }
+}
+
+export type AlbumWithTracks = {
+  album: CatalogAlbumRow;
+  tracks: DashboardTrack[];
+};
+
+export async function getAccessibleAlbumWithTracksBySlug(
+  userId: string,
+  slug: string,
+): Promise<AlbumWithTracks | null> {
+  const supabase = createServiceCatalog();
+  const decoded = decodeURIComponent(slug);
+  const { data: album, error } = await supabase
+    .from('albums')
+    .select('*')
+    .eq('slug', decoded)
+    .maybeSingle();
+
+  if (error || !album) return null;
+  const a = album as CatalogAlbumRow;
+  const albumAccessible =
+    a.owner_id === userId ||
+    a.visibility === 'public' ||
+    a.visibility === 'unlisted';
+  if (!albumAccessible) return null;
+
+  const { data: rows } = await supabase
+    .from('album_tracks')
+    .select('track_id, sort_order, tracks (*)')
+    .eq('album_id', a.id)
+    .order('sort_order', { ascending: true });
+
+  const tracks: DashboardTrack[] = [];
+  for (const r of (rows ?? []) as AlbumTrackJoinRow[]) {
+    const joined = joinTrack(r.tracks);
+    const id = joined?.id ?? r.track_id;
+    const allowed = await getCatalogTrackIfAccessible(supabase, userId, id);
+    if (!allowed) continue;
+    tracks.push(catalogRowToDashboardTrack(allowed, false));
+  }
+
+  return { album: a, tracks };
 }
 
 /**

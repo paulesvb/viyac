@@ -10,6 +10,7 @@ import { toVaultTrackData } from '@/lib/dashboard-tracks';
 
 type PageProps = {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ album?: string }>;
 };
 
 export async function generateMetadata({
@@ -22,8 +23,9 @@ export async function generateMetadata({
   return { title: `${track.title} | Music` };
 }
 
-export default async function MusicTrackPage({ params }: PageProps) {
+export default async function MusicTrackPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
+  const { album } = await searchParams;
   const { userId } = await auth();
   const track = await resolveTrackForMusicPage(userId ?? null, slug);
   if (!track) notFound();
@@ -33,12 +35,20 @@ export default async function MusicTrackPage({ params }: PageProps) {
 
   return (
     <div className="min-w-0 w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-      <div className="mx-auto mb-6 max-w-6xl">
+      <div className="mx-auto mb-6 flex max-w-6xl items-center gap-4 text-sm">
+        {album?.trim() ? (
+          <Link
+            href={`/music/albums/${encodeURIComponent(album.trim())}`}
+            className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            ← Back to album
+          </Link>
+        ) : null}
         <Link
-          href="/dashboard"
-          className="inline-block text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          href="/home"
+          className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
         >
-          ← Back to dashboard
+          Home
         </Link>
       </div>
       <div className="w-full min-w-0 space-y-4">

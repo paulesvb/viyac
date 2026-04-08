@@ -3,19 +3,48 @@
 import { useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 import { DashboardFeaturedMarquee } from '@/components/DashboardFeaturedMarquee';
+import { ProvenanceBadge } from '@/components/ProvenanceBadge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import type { DashboardAlbum } from '@/lib/catalog-from-supabase';
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
 import {
   getFeaturedDashboardTrackFromList,
   getOtherDashboardTracksFromList,
 } from '@/lib/dashboard-tracks';
+import { resolvePublicAssetsUrl } from '@/lib/storage';
 
 type Props = {
   tracks: DashboardTrack[];
+  albums: DashboardAlbum[];
 };
 
-export default function DashboardPageClient({ tracks }: Props) {
-  const { user, isLoaded } = useUser();
+function getTrackPosterUrl(track: DashboardTrack): string | null {
+  const source =
+    track.thumbnail_url?.trim() ||
+    track.lock_screen_art_path?.trim() ||
+    process.env.NEXT_PUBLIC_MEDIA_SESSION_ART_URL?.trim();
+  if (!source) return null;
+  try {
+    return resolvePublicAssetsUrl(source);
+  } catch {
+    return null;
+  }
+}
+
+function getAlbumCoverUrl(album: DashboardAlbum): string | null {
+  const source =
+    album.cover_image_path?.trim() ||
+    process.env.NEXT_PUBLIC_MEDIA_SESSION_ART_URL?.trim();
+  if (!source) return null;
+  try {
+    return resolvePublicAssetsUrl(source);
+  } catch {
+    return null;
+  }
+}
+
+export default function DashboardPageClient({ tracks, albums }: Props) {
+  const { isLoaded } = useUser();
   const featured = getFeaturedDashboardTrackFromList(tracks);
   const otherTracks = getOtherDashboardTracksFromList(tracks, featured);
   const showTrackListOrEmpty =
@@ -33,7 +62,7 @@ export default function DashboardPageClient({ tracks }: Props) {
     <div className="min-w-0 w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <header className="mx-auto mb-6 max-w-6xl sm:mb-8">
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          Dashboard
+          Home
         </h1>
       </header>
 
@@ -87,65 +116,101 @@ export default function DashboardPageClient({ tracks }: Props) {
             More tracks
           </h2>
           <ul className="grid gap-3 sm:grid-cols-2">
-            {otherTracks.map((track) => (
+            {otherTracks.map((track) => {
+              const posterUrl = getTrackPosterUrl(track);
+              return (
               <li key={track.catalog_track_id ?? track.slug}>
                 <Link
                   href={`/music/tracks/${encodeURIComponent(track.slug)}`}
-                  className="block rounded-lg border border-border bg-card p-4 transition hover:border-cyan-500/40 hover:bg-muted/40"
+                  className="group relative flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition hover:border-cyan-500/40 hover:bg-muted/40"
                 >
-                  <p className="font-medium text-foreground">{track.title}</p>
-                  {track.description_en ? (
-                    <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                      {track.description_en}
+                  {posterUrl ? (
+                    <div className="relative h-16 w-16 shrink-0 overflow-visible rounded-md ring-1 ring-border/60">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={posterUrl}
+                        alt={`${track.title} poster`}
+                        className="absolute inset-0 h-full w-full rounded-md object-cover"
+                      />
+                      {/* Detached hover preview (outside thumbnail bounds). */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={posterUrl}
+                        alt=""
+                        aria-hidden
+                        className="pointer-events-none absolute left-1/2 top-1/2 z-20 h-full w-full -translate-x-1/2 -translate-y-1/2 rounded-md object-cover opacity-0 shadow-2xl ring-1 ring-cyan-400/40 transition duration-200 group-hover:opacity-100 group-hover:scale-[3]"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-muted text-xs text-muted-foreground ring-1 ring-border/60">
+                      Art
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate font-medium text-foreground">{track.title}</p>
+                      <ProvenanceBadge type={track.provenance_type} />
+                    </div>
+                    {track.description_en ? (
+                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                        {track.description_en}
+                      </p>
+                    ) : null}
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Open player →
                     </p>
-                  ) : null}
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Open player →
-                  </p>
+                  </div>
                 </Link>
               </li>
-            ))}
+            )})}
+          </ul>
+        </section>
+      ) : null}
+
+      {albums.length > 0 ? (
+        <section className="mx-auto mt-8 max-w-6xl space-y-4" aria-labelledby="albums-heading">
+          <h2
+            id="albums-heading"
+            className="text-xl font-semibold tracking-tight"
+          >
+            Albums
+          </h2>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {albums.map((album) => {
+              const coverUrl = getAlbumCoverUrl(album);
+              return (
+                <li key={album.id}>
+                  <Link
+                    href={`/music/albums/${encodeURIComponent(album.slug)}`}
+                    className="group block overflow-hidden rounded-lg border border-border bg-card transition hover:border-cyan-500/40 hover:bg-muted/40"
+                  >
+                    {coverUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={coverUrl}
+                        alt={`${album.title} cover`}
+                        className="aspect-video w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex aspect-video w-full items-center justify-center bg-muted text-sm text-muted-foreground">
+                        Album cover
+                      </div>
+                    )}
+                    <div className="space-y-1 p-3">
+                      <p className="truncate font-medium text-foreground">{album.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {album.track_count} track{album.track_count === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : null}
       </div>
       ) : null}
-
-      <div className="mx-auto mt-10 max-w-6xl grid gap-6 sm:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Welcome!</CardTitle>
-            <CardDescription>You are signed in</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <p className="text-sm">
-                <span className="text-muted-foreground">Email:</span>{' '}
-                {user?.primaryEmailAddress?.emailAddress}
-              </p>
-              {user?.fullName && (
-                <p className="text-sm">
-                  <span className="text-muted-foreground">Name:</span>{' '}
-                  {user.fullName}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Protected Content</CardTitle>
-            <CardDescription>Only visible when authenticated</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              This page is protected by Clerk middleware. Unauthenticated users
-              are redirected to sign in.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

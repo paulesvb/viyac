@@ -654,6 +654,7 @@ export function VaultPlayer({
 
   const embedded = variant === 'embedded';
   const layer = embedded ? 'absolute' : 'fixed';
+  const verticalAlign = embedded ? 'justify-center' : 'justify-start sm:justify-center';
   const shellMin = embedded
     ? 'min-h-[min(480px,82dvh)] sm:min-h-[min(520px,78dvh)] lg:min-h-[min(560px,80dvh)]'
     : 'min-h-[100dvh]';
@@ -670,7 +671,7 @@ export function VaultPlayer({
 
   return (
     <div
-      className={`relative w-full overflow-hidden ${shellMin} ${embedded ? 'rounded-2xl ring-1 ring-[#00f2ff]/15' : ''} ${cinematic ? 'bg-zinc-950' : ''}`}
+      className={`relative w-full overflow-hidden ${shellMin} ${embedded ? 'rounded-xl bg-zinc-950' : ''} ${cinematic ? 'bg-zinc-950' : ''}`}
     >
       {showBackdropImage ? (
         <>
@@ -702,7 +703,7 @@ export function VaultPlayer({
       )}
 
       <div
-        className={`relative z-20 flex ${shellMin} flex-col items-center justify-center ${embedded ? 'p-3 sm:p-4 lg:p-6' : 'p-4 sm:p-8'}`}
+        className={`relative z-20 flex ${shellMin} flex-col items-center ${verticalAlign} ${embedded ? 'p-3 sm:p-4 lg:p-6' : 'p-4 sm:p-8'}`}
       >
         <div
           className={`w-full border border-[#00f2ff]/20 bg-zinc-950/80 shadow-[0_0_48px_-12px_rgba(0,242,255,0.12)] backdrop-blur-md ${
@@ -892,7 +893,6 @@ export function VaultPlayer({
                         ♪
                       </div>
                     )}
-                    <div className="absolute left-1/2 top-1/2 z-20 h-full w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-950 shadow-lg ring-1 ring-[#7b2eff]/30" />
                   </div>
 
                   <audio

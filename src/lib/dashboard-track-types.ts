@@ -1,3 +1,5 @@
+import type { ProvenanceType } from '@/lib/provenance';
+
 export type DashboardTrack = {
   slug: string;
   title: string;
@@ -25,4 +27,6 @@ export type DashboardTrack = {
   lock_screen_art_path?: string;
   /** Optional `api.tracks.id` for listen logging and personal ratings. */
   catalog_track_id?: string;
+  /** Optional catalog provenance badge (GENESIS / HYBRID / ECHO). */
+  provenance_type?: ProvenanceType;
 };

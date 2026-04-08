@@ -20,7 +20,7 @@ export function Navbar() {
           ) : isSignedIn ? (
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/dashboard">Dashboard</Link>
+                <Link href="/home">Home</Link>
               </Button>
               <UserButton />
             </div>

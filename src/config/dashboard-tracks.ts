@@ -1,7 +1,7 @@
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
 
 /**
- * Dashboard track list (shown on `/dashboard`). Each entry opens `/music/tracks/[slug]`.
+ * Home track list (shown on `/home`). Each entry opens `/music/tracks/[slug]`.
  * When this array is empty, a single track is built from `NEXT_PUBLIC_DASHBOARD_VAULT_TRACK_PATH` (and optional waveform/bg env vars).
  *
  * Example (vault HLS + vault waveform + looping background video):
