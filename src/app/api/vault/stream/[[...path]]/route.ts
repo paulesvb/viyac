@@ -1,7 +1,9 @@
 import { auth } from '@clerk/nextjs/server';
 import { type NextRequest, NextResponse } from 'next/server';
 
+import { vaultPathAllowedForAnonymous } from '@/lib/catalog-track-access';
 import { rewriteHlsManifest } from '@/lib/hls-manifest-rewrite';
+import { createServiceCatalog } from '@/lib/supabase-catalog';
 import { getVaultSignedUrl } from '@/lib/vault';
 
 function isUnsafePath(p: string): boolean {
@@ -12,19 +14,31 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ path?: string[] }> },
 ) {
-  const { userId } = await auth();
-  if (!userId) {
-    return new NextResponse('Unauthorized', { status: 401 });
-  }
-
   const { path: segments } = await context.params;
   if (!segments?.length) {
     return new NextResponse('Not found', { status: 404 });
   }
 
-  const objectPath = segments.join('/');
+  const objectPath = segments
+    .map((seg) => {
+      try {
+        return decodeURIComponent(seg);
+      } catch {
+        return seg;
+      }
+    })
+    .join('/');
   if (isUnsafePath(objectPath)) {
     return new NextResponse('Invalid path', { status: 400 });
+  }
+
+  const { userId } = await auth();
+  if (!userId) {
+    const supabase = createServiceCatalog();
+    const allowed = await vaultPathAllowedForAnonymous(supabase, objectPath);
+    if (!allowed) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
   }
 
   let signedUrl: string;

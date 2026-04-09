@@ -60,6 +60,8 @@ export type VaultTrackData = {
   is_single?: boolean;
   /** Containing album title when `is_single === false` (player second line vs descriptions). */
   album_title?: string;
+  /** When true with `catalog_track_id`, signed-out listen heartbeats are recorded. */
+  anonymous_visible?: boolean;
   /** ISO `YYYY-MM-DD` (use 1st of month for month/year). */
   release_date?: string;
   duration_ms?: number;
@@ -170,6 +172,7 @@ export function VaultPlayer({
     is_instrumental,
     is_single,
     album_title,
+    anonymous_visible,
     release_date,
     duration_ms,
     waveform_json_path,
@@ -290,6 +293,9 @@ export function VaultPlayer({
     catalogTrackId: catalog_track_id?.trim(),
     playing,
     trackKey: track_path,
+    allowAnonymousListen: Boolean(
+      catalog_track_id?.trim() && anonymous_visible === true,
+    ),
   });
 
   const playUrl = useMemo(() => vaultStreamUrl(track_path), [track_path]);

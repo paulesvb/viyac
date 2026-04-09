@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 const isProtectedRoute = createRouteMatcher([
   '/home(.*)',
   '/dashboard(.*)',
-  '/music(.*)',
+  // /music: track pages can be public for anonymous_visible tracks; pages enforce access.
   '/profile(.*)',
   '/settings(.*)',
 ]);

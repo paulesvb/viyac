@@ -31,13 +31,15 @@ async function postListenIncrement(trackId: string, increment_seconds: number) {
 /**
  * While signed in and `catalogTrackId` is set, reports wall-clock seconds listened during playback
  * (heartbeat + flush on pause/unmount) for rating eligibility.
+ * When signed out, the same path runs if `allowAnonymousListen` and catalog id are set (anonymous stats).
  */
 export function useCatalogListenHeartbeat(opts: {
   catalogTrackId: string | undefined;
   playing: boolean;
   trackKey: string;
+  allowAnonymousListen?: boolean;
 }) {
-  const { isSignedIn } = useUser();
+  const { isSignedIn, isLoaded } = useUser();
   const lastAnchorRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -45,8 +47,14 @@ export function useCatalogListenHeartbeat(opts: {
   }, [opts.trackKey, opts.catalogTrackId]);
 
   useEffect(() => {
-    if (!isSignedIn || !isCatalogTrackId(opts.catalogTrackId)) return;
+    if (!isLoaded) return;
+
     const trackId = opts.catalogTrackId;
+    if (!isCatalogTrackId(trackId)) return;
+
+    const allow =
+      isSignedIn || Boolean(opts.allowAnonymousListen);
+    if (!allow) return;
 
     if (!opts.playing) {
       const anchor = lastAnchorRef.current;
@@ -86,5 +94,11 @@ export function useCatalogListenHeartbeat(opts: {
         }
       }
     };
-  }, [isSignedIn, opts.catalogTrackId, opts.playing]);
+  }, [
+    isLoaded,
+    isSignedIn,
+    opts.allowAnonymousListen,
+    opts.catalogTrackId,
+    opts.playing,
+  ]);
 }

@@ -1,5 +1,6 @@
 /**
- * Client-side: fetch a short-lived signed URL for a `vault` object (requires signed-in session).
+ * Client-side: fetch a short-lived signed URL for a `vault` object.
+ * Signed-in: any path. Signed-out: only paths tied to `anonymous_visible` catalog tracks.
  */
 export async function fetchVaultSignedUrl(objectPath: string): Promise<string> {
   const path = objectPath.replace(/^\//, '');

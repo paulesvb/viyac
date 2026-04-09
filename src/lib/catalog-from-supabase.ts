@@ -2,7 +2,11 @@ import 'server-only';
 
 import { createServiceCatalog } from '@/lib/supabase-catalog';
 import type { CatalogAlbumRow, CatalogTrackRow } from '@/lib/catalog-types';
-import { getCatalogTrackIfAccessible } from '@/lib/catalog-track-access';
+import {
+  getCatalogTrackIfAccessible,
+  getCatalogTrackIfAnonymousAccessible,
+  listAnonymousAccessibleCatalogTrackRows,
+} from '@/lib/catalog-track-access';
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
 import { normalizeTagList } from '@/lib/track-meta';
 
@@ -189,6 +193,36 @@ export function catalogRowToDashboardTrack(
   };
 }
 
+/** Anonymous preview tracks for `/` (empty if none or error). */
+export async function fetchAnonymousLandingTracks(): Promise<DashboardTrack[]> {
+  try {
+    const supabase = createServiceCatalog();
+    const rows = await listAnonymousAccessibleCatalogTrackRows(supabase);
+    if (rows.length === 0) return [];
+    const hasFeatured = rows.some((r) => r.featured);
+    const trackIds = rows.map((r) => r.id);
+    const onAlbumIds = await fetchTrackIdsLinkedToAlbums(supabase, trackIds);
+    const albumTitles = await fetchPrimaryAlbumTitleByTrackIds(
+      supabase,
+      trackIds,
+    );
+    return rows.map((r, i) => {
+      const onAlbum = onAlbumIds.has(r.id);
+      const albumTitle = albumTitles.get(r.id);
+      return {
+        ...catalogRowToDashboardTrack(r, hasFeatured ? r.featured : i === 0, {
+          is_single: !onAlbum,
+          ...(onAlbum && albumTitle ? { album_title: albumTitle } : {}),
+        }),
+        anonymous_visible: true as const,
+      };
+    });
+  } catch (e) {
+    console.error('[fetchAnonymousLandingTracks]', e);
+    return [];
+  }
+}
+
 /** Catalog-backed list for the dashboard (empty if none or error). */
 export async function fetchDashboardTracksFromCatalog(
   userId: string,
@@ -335,6 +369,32 @@ export async function resolveTrackForMusicPage(
         const allowed = await getCatalogTrackIfAccessible(
           supabase,
           userId,
+          row.id,
+        );
+        if (allowed) {
+          const linked = await isTrackLinkedToAnyAlbum(supabase, allowed.id);
+          const albumTitles = linked
+            ? await fetchPrimaryAlbumTitleByTrackIds(supabase, [allowed.id])
+            : new Map<string, string>();
+          const albumTitle = albumTitles.get(allowed.id);
+          return catalogRowToDashboardTrack(allowed, false, {
+            is_single: !linked,
+            ...(linked && albumTitle ? { album_title: albumTitle } : {}),
+          });
+        }
+      }
+    }
+  } else {
+    const supabase = createServiceCatalog();
+    const { data: candidates, error } = await supabase
+      .from('tracks')
+      .select('*')
+      .eq('slug', decoded);
+
+    if (!error && candidates?.length) {
+      for (const row of candidates as CatalogTrackRow[]) {
+        const allowed = await getCatalogTrackIfAnonymousAccessible(
+          supabase,
           row.id,
         );
         if (allowed) {

@@ -42,6 +42,8 @@ export type DashboardTrack = {
   is_single?: boolean;
   /** Display name of a containing album (for cards when `is_single` is false). */
   album_title?: string;
+  /** Catalog: allow anonymous page + stream + listen stats when true. */
+  anonymous_visible?: boolean;
   /** ISO date `YYYY-MM-DD`; use 1st of month for month/year releases. */
   release_date?: string;
   /** Track length for UI (`api.tracks.duration_ms`). */

@@ -148,6 +148,7 @@ export function toVaultTrackData(track: DashboardTrack): VaultTrackData {
       : track.is_single === false
         ? { is_single: false }
         : {}),
+    ...(track.anonymous_visible ? { anonymous_visible: true } : {}),
     ...(track.album_title?.trim()
       ? { album_title: track.album_title.trim() }
       : {}),
