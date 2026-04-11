@@ -1,9 +1,14 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
+import { isPlatformAdmin } from '@/lib/admin-access';
+
+const isAdminRoute = createRouteMatcher(['/admin(.*)']);
+
 const isProtectedRoute = createRouteMatcher([
   '/home(.*)',
   '/dashboard(.*)',
+  '/admin(.*)',
   // /music: track pages can be public for anonymous_visible tracks; pages enforce access.
   '/profile(.*)',
   '/settings(.*)',
@@ -19,6 +24,13 @@ export default clerkMiddleware(async (auth, req) => {
 
   if (isProtectedRoute(req)) {
     await auth.protect();
+  }
+
+  if (isAdminRoute(req)) {
+    const { userId } = await auth();
+    if (!isPlatformAdmin(userId)) {
+      return NextResponse.redirect(new URL('/home', req.url));
+    }
   }
 
   if (isAuthRoute(req)) {

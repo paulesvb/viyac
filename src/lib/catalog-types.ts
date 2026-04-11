@@ -36,6 +36,8 @@ export type CatalogTrackRow = {
   visibility: 'private' | 'public' | 'unlisted';
   /** When true, signed-out users may stream and log listens (with visibility/album rules). */
   anonymous_visible?: boolean | null;
+  /** When true, may appear on signed-in Home “More tracks” (not the featured marquee row). */
+  show_in_home_more_tracks?: boolean | null;
   content_type: 'audio' | 'video';
   provenance_type: ProvenanceType | null;
   /** Standard stream (HLS or ~256k AAC URL); optional vs vault `track_path`. */

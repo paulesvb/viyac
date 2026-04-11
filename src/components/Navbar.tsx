@@ -4,7 +4,12 @@ import Link from 'next/link';
 import { useAuth, UserButton } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 
-export function Navbar() {
+type NavbarProps = {
+  /** Only platform admins see Admin (see `ADMIN_CLERK_USER_ID` in env). */
+  showAdminLink?: boolean;
+};
+
+export function Navbar({ showAdminLink = false }: NavbarProps) {
   const { isSignedIn, isLoaded } = useAuth();
 
   return (
@@ -31,6 +36,11 @@ export function Navbar() {
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/home">Home</Link>
               </Button>
+              {showAdminLink ? (
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/admin/tracks">Admin</Link>
+                </Button>
+              ) : null}
               <UserButton />
             </div>
           ) : (

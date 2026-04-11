@@ -190,6 +190,9 @@ export function catalogRowToDashboardTrack(
     bg_image_path: row.thumbnail_path ?? undefined,
     lock_screen_art_path: row.lock_screen_art_path ?? row.thumbnail_path ?? undefined,
     catalog_track_id: row.id,
+    ...(row.show_in_home_more_tracks === false
+      ? { show_in_home_more_tracks: false as const }
+      : {}),
   };
 }
 

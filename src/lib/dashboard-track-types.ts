@@ -44,6 +44,11 @@ export type DashboardTrack = {
   album_title?: string;
   /** Catalog: allow anonymous page + stream + listen stats when true. */
   anonymous_visible?: boolean;
+  /**
+   * When false, hidden from signed-in Home “More tracks” (featured player unchanged).
+   * Omitted / undefined treated as true for static config tracks.
+   */
+  show_in_home_more_tracks?: boolean;
   /** ISO date `YYYY-MM-DD`; use 1st of month for month/year releases. */
   release_date?: string;
   /** Track length for UI (`api.tracks.duration_ms`). */

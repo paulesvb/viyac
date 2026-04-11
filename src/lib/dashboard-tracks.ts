@@ -79,6 +79,7 @@ export function getOtherDashboardTracksFromList(
 ): DashboardTrack[] {
   if (!featured) return [];
   return tracks.filter((t) => {
+    if (t.show_in_home_more_tracks === false) return false;
     if (featured.catalog_track_id && t.catalog_track_id) {
       return t.catalog_track_id !== featured.catalog_track_id;
     }
