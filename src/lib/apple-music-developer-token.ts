@@ -2,6 +2,29 @@ import 'server-only';
 
 import { SignJWT, importPKCS8 } from 'jose';
 
+import { getSiteUrl } from '@/lib/site-url';
+
+/**
+ * Origins allowed to use the developer token in the browser (must match `Origin` on Apple requests).
+ * @see https://developer.apple.com/documentation/applemusicapi/generating-developer-tokens (claim `origin`)
+ */
+function appleMusicJwtOrigins(): string[] {
+  const raw = process.env.APPLE_MUSIC_JWT_ORIGINS?.trim();
+  const parts =
+    raw && raw.length > 0
+      ? raw.split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean)
+      : [getSiteUrl().replace(/\/$/, '')];
+
+  const set = new Set(parts);
+  if (process.env.NODE_ENV === 'development') {
+    const port = process.env.PORT?.trim() || '3000';
+    set.add(`http://localhost:${port}`);
+    set.add(`http://127.0.0.1:${port}`);
+  }
+
+  return Array.from(set);
+}
+
 /**
  * Apple’s `.p8` is PEM PKCS#8. Env files often break it: outer quotes, literal `\n`, CRLF, or a single long line.
  */
@@ -53,7 +76,9 @@ export async function createAppleMusicDeveloperToken(): Promise<string> {
   /** Apple allows up to ~6 months; keep ours shorter unless overridden (jose duration string). */
   const ttl = ttlRaw && ttlRaw.length > 0 ? ttlRaw : '12h';
 
-  return new SignJWT({})
+  const origins = appleMusicJwtOrigins();
+
+  return new SignJWT({ origin: origins })
     .setProtectedHeader({ alg: 'ES256', kid: keyId })
     .setIssuer(teamId)
     .setIssuedAt()
