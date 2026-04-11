@@ -21,6 +21,8 @@ declare global {
       name: string;
       build: string;
     };
+    storefrontId?: string;
+    debug?: boolean;
   }
 
   interface MusicKitInstance {

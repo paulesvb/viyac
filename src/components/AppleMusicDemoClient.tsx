@@ -21,6 +21,23 @@ function musickitBuild(): string {
   return process.env.NEXT_PUBLIC_MUSICKIT_BUILD?.trim() || '1.0.0';
 }
 
+function appleMusicStorefront(): string {
+  return process.env.NEXT_PUBLIC_APPLE_MUSIC_STOREFRONT?.trim() || 'us';
+}
+
+function formatMusicKitError(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'object' && e !== null && 'message' in e) {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === 'string' && m) return m;
+  }
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
 function loadMusicKit(): Promise<void> {
   if (typeof window === 'undefined') {
     return Promise.reject(new Error('No window'));
@@ -81,6 +98,7 @@ export function AppleMusicDemoClient() {
   const [configured, setConfigured] = useState(false);
   const [authorized, setAuthorized] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [tokenOrigins, setTokenOrigins] = useState<string[] | null>(null);
   const musicRef = useRef<MusicKitInstance | null>(null);
   const demoSongId = getDemoSongId();
 
@@ -108,9 +126,14 @@ export function AppleMusicDemoClient() {
     setBusy(true);
     setKitError(null);
     try {
-      const res = await fetch('/api/apple-music/developer-token');
+      const res = await fetch('/api/apple-music/developer-token', {
+        headers: {
+          'X-Page-Origin': window.location.origin,
+        },
+      });
       const data = (await res.json()) as {
         token?: string;
+        origins?: string[];
         error?: string;
         hint?: string;
       };
@@ -121,12 +144,15 @@ export function AppleMusicDemoClient() {
       if (!data.token) {
         throw new Error('No token in response');
       }
+      setTokenOrigins(Array.isArray(data.origins) ? data.origins : null);
       await window.MusicKit.configure({
         developerToken: data.token,
         app: {
           name: musickitAppName(),
           build: musickitBuild(),
         },
+        storefrontId: appleMusicStorefront(),
+        ...(process.env.NODE_ENV === 'development' ? { debug: true } : {}),
       });
       musicRef.current = window.MusicKit.getInstance();
       setConfigured(true);
@@ -147,7 +173,7 @@ export function AppleMusicDemoClient() {
       await music.authorize();
       setAuthorized(music.isAuthorized);
     } catch (e: unknown) {
-      setKitError(e instanceof Error ? e.message : 'Authorization failed');
+      setKitError(formatMusicKitError(e));
     } finally {
       setBusy(false);
     }
@@ -229,6 +255,14 @@ export function AppleMusicDemoClient() {
           Play demo song
         </Button>
       </div>
+
+      {tokenOrigins && tokenOrigins.length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          JWT <code className="text-[11px]">origin</code> list:{' '}
+          {tokenOrigins.join(', ')} — must include{' '}
+          <code className="text-[11px]">{typeof window !== 'undefined' ? window.location.origin : ''}</code>
+        </p>
+      ) : null}
 
       {!sdkReady && !kitError ? (
         <p className="text-xs text-muted-foreground">Loading MusicKit…</p>

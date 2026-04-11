@@ -5,17 +5,47 @@ import { SignJWT, importPKCS8 } from 'jose';
 import { getSiteUrl } from '@/lib/site-url';
 
 /**
+ * `window.location.origin` from the client — must be in the JWT `origin` claim or Apple MusicKit
+ * authorize often fails with a generic “network” error. Vercel’s `VERCEL_URL` alone can miss
+ * the custom domain users actually open.
+ */
+export function parsePageOriginHeader(value: string | null): string | undefined {
+  const t = value?.trim();
+  if (!t) return undefined;
+  try {
+    const u = new URL(t);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return undefined;
+    if (
+      u.protocol === 'http:' &&
+      u.hostname !== 'localhost' &&
+      u.hostname !== '127.0.0.1'
+    ) {
+      return undefined;
+    }
+    return u.origin.replace(/\/$/, '');
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Origins allowed to use the developer token in the browser (must match `Origin` on Apple requests).
  * @see https://developer.apple.com/documentation/applemusicapi/generating-developer-tokens (claim `origin`)
  */
-function appleMusicJwtOrigins(): string[] {
+export function buildAppleMusicJwtOrigins(
+  pageOriginFromClient?: string | null,
+): string[] {
   const raw = process.env.APPLE_MUSIC_JWT_ORIGINS?.trim();
   const parts =
     raw && raw.length > 0
       ? raw.split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean)
       : [getSiteUrl().replace(/\/$/, '')];
 
-  const set = new Set(parts);
+  const set = new Set<string>();
+  const page = pageOriginFromClient?.trim().replace(/\/$/, '');
+  if (page) set.add(page);
+  for (const p of parts) set.add(p);
+
   if (process.env.NODE_ENV === 'development') {
     const port = process.env.PORT?.trim() || '3000';
     set.add(`http://localhost:${port}`);
@@ -61,7 +91,9 @@ export function isAppleMusicDeveloperCredentialsConfigured(): boolean {
  * JWT for MusicKit on the web and Apple Music API (server-side catalog calls).
  * @see https://developer.apple.com/documentation/applemusicapi/getting_keys_and_creating_tokens
  */
-export async function createAppleMusicDeveloperToken(): Promise<string> {
+export async function createAppleMusicDeveloperToken(
+  pageOriginFromClient?: string | null,
+): Promise<string> {
   const teamId = process.env.APPLE_MUSIC_TEAM_ID?.trim();
   const keyId = process.env.APPLE_MUSIC_KEY_ID?.trim();
   const pem = process.env.APPLE_MUSIC_PRIVATE_KEY?.trim();
@@ -76,9 +108,12 @@ export async function createAppleMusicDeveloperToken(): Promise<string> {
   /** Apple allows up to ~6 months; keep ours shorter unless overridden (jose duration string). */
   const ttl = ttlRaw && ttlRaw.length > 0 ? ttlRaw : '12h';
 
-  const origins = appleMusicJwtOrigins();
+  const omitOrigin = process.env.APPLE_MUSIC_JWT_OMIT_ORIGIN === 'true';
+  const origins = buildAppleMusicJwtOrigins(pageOriginFromClient);
 
-  return new SignJWT({ origin: origins })
+  const payload = omitOrigin ? {} : { origin: origins };
+
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: 'ES256', kid: keyId })
     .setIssuer(teamId)
     .setIssuedAt()

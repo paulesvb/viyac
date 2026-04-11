@@ -4,6 +4,8 @@ import { NextResponse } from 'next/server';
 import {
   createAppleMusicDeveloperToken,
   isAppleMusicDeveloperCredentialsConfigured,
+  parsePageOriginHeader,
+  buildAppleMusicJwtOrigins,
 } from '@/lib/apple-music-developer-token';
 import { userHasAppleLinked } from '@/lib/apple-music-user';
 
@@ -13,7 +15,7 @@ export const runtime = 'nodejs';
  * Short-lived MusicKit developer token (JWT). Private key stays on the server.
  * Requires Clerk session. Set APPLE_MUSIC_REQUIRE_APPLE_ID=true to allow only users who linked Apple.
  */
-export async function GET() {
+export async function GET(request: Request) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -40,8 +42,14 @@ export async function GET() {
   }
 
   try {
-    const token = await createAppleMusicDeveloperToken();
-    return NextResponse.json({ token });
+    const pageOrigin = parsePageOriginHeader(
+      request.headers.get('x-page-origin'),
+    );
+    const token = await createAppleMusicDeveloperToken(pageOrigin);
+    return NextResponse.json({
+      token,
+      origins: buildAppleMusicJwtOrigins(pageOrigin),
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error('[api/apple-music/developer-token]', message, e);
