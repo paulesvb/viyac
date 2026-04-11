@@ -5,6 +5,8 @@ export const metadata: Metadata = {
   title: 'Apple Music (demo) | Viyac',
   description:
     'MusicKit proof of concept: developer token from the server and playback in the browser.',
+  /** Reinforces Referrer-Policy for MusicKit / Apple (esp. mobile Safari). */
+  referrer: 'origin',
 };
 
 export default function AppleMusicDemoPage() {

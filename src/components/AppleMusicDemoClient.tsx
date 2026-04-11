@@ -164,19 +164,23 @@ export function AppleMusicDemoClient() {
     }
   }, []);
 
-  const authorize = useCallback(async () => {
+  /** Start `authorize()` synchronously from the click — iOS Safari ties popups/embedded auth to user gesture. */
+  const authorize = useCallback(() => {
     const music = musicRef.current;
     if (!music) return;
-    setBusy(true);
     setKitError(null);
-    try {
-      await music.authorize();
-      setAuthorized(music.isAuthorized);
-    } catch (e: unknown) {
-      setKitError(formatMusicKitError(e));
-    } finally {
-      setBusy(false);
-    }
+    setBusy(true);
+    void music
+      .authorize()
+      .then(() => {
+        setAuthorized(music.isAuthorized);
+      })
+      .catch((e: unknown) => {
+        setKitError(formatMusicKitError(e));
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   }, []);
 
   const playDemo = useCallback(async () => {
@@ -218,9 +222,20 @@ export function AppleMusicDemoClient() {
       <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
         <li>Load MusicKit (automatic).</li>
         <li>Configure with a server-signed developer token.</li>
-        <li>Authorize Apple Music on this device.</li>
+        <li>Authorize Apple Music on this device (tap once; wait for Apple’s sheet).</li>
         <li>Play the demo catalog song (requires Apple Music subscription for full playback where applicable).</li>
       </ol>
+      <p className="text-xs text-muted-foreground">
+        <strong className="font-medium text-foreground/90">iPhone Safari:</strong>{' '}
+        use the exact site URL you deployed (check the JWT{' '}
+        <code className="text-[11px]">origin</code> line matches the address bar). If
+        auth still fails, try Settings → Safari → turn off{' '}
+        <em>Prevent Cross-Site Tracking</em> temporarily, ensure you’re signed into
+        Apple Music, and update{' '}
+        <code className="text-[11px]">NEXT_PUBLIC_APPLE_MUSIC_STOREFRONT</code> to
+        your country code (e.g. <code className="text-[11px]">us</code>,{' '}
+        <code className="text-[11px]">gb</code>).
+      </p>
 
       {kitError ? (
         <p className="text-sm text-red-400" role="alert">
@@ -240,7 +255,7 @@ export function AppleMusicDemoClient() {
           type="button"
           variant="secondary"
           disabled={!configured || busy || authorized}
-          onClick={() => void authorize()}
+          onClick={authorize}
         >
           {authorized ? 'Authorized' : 'Authorize Apple Music'}
         </Button>
