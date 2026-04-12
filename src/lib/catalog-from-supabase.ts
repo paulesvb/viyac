@@ -234,6 +234,9 @@ export function catalogRowToDashboardTrack(
     bg_image_path: row.thumbnail_path ?? undefined,
     lock_screen_art_path: row.lock_screen_art_path ?? row.thumbnail_path ?? undefined,
     catalog_track_id: row.id,
+    ...(row.anonymous_visible
+      ? { anonymous_visible: true as const }
+      : {}),
     ...(row.show_in_home_more_tracks === false
       ? { show_in_home_more_tracks: false as const }
       : {}),
@@ -409,7 +412,10 @@ export async function resolveTrackForMusicPage(
     const { data: candidates, error } = await supabase
       .from('tracks')
       .select('*')
-      .eq('slug', decoded);
+      .eq('slug', decoded)
+      .order('featured', { ascending: false })
+      .order('sort_order', { ascending: true })
+      .order('title', { ascending: true });
 
     if (!error && candidates?.length) {
       for (const row of candidates as CatalogTrackRow[]) {
@@ -436,7 +442,10 @@ export async function resolveTrackForMusicPage(
     const { data: candidates, error } = await supabase
       .from('tracks')
       .select('*')
-      .eq('slug', decoded);
+      .eq('slug', decoded)
+      .order('featured', { ascending: false })
+      .order('sort_order', { ascending: true })
+      .order('title', { ascending: true });
 
     if (!error && candidates?.length) {
       for (const row of candidates as CatalogTrackRow[]) {

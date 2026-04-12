@@ -6,6 +6,25 @@ import { rewriteHlsManifest } from '@/lib/hls-manifest-rewrite';
 import { createServiceCatalog } from '@/lib/supabase-catalog';
 import { getVaultSignedUrl } from '@/lib/vault';
 
+/** Forward selected upstream headers so Range / partial content works for segments. */
+function passthroughHeaders(upstream: Response): Headers {
+  const out = new Headers();
+  const copy = [
+    'content-type',
+    'content-length',
+    'content-range',
+    'accept-ranges',
+    'etag',
+    'last-modified',
+  ] as const;
+  for (const name of copy) {
+    const v = upstream.headers.get(name);
+    if (v) out.set(name, v);
+  }
+  out.set('Cache-Control', 'private, max-age=60');
+  return out;
+}
+
 function isUnsafePath(p: string): boolean {
   return p.includes('..') || p.startsWith('/');
 }
@@ -70,5 +89,25 @@ export async function GET(
     });
   }
 
-  return NextResponse.redirect(signedUrl, 302);
+  /**
+   * Stream bytes through this origin instead of 302 to Supabase. Browsers and HLS
+   * clients must hit URLs that include the signed `token` query param; redirects
+   * can drop or mishandle long query strings → Supabase 400 ("token" missing).
+   */
+  const range = request.headers.get('Range');
+  const upstream = await fetch(signedUrl, {
+    redirect: 'follow',
+    ...(range ? { headers: { Range: range } } : {}),
+  });
+
+  if (!upstream.ok || !upstream.body) {
+    return new NextResponse(upstream.statusText || 'Upstream error', {
+      status: upstream.status === 404 ? 404 : 502,
+    });
+  }
+
+  return new NextResponse(upstream.body, {
+    status: upstream.status,
+    headers: passthroughHeaders(upstream),
+  });
 }

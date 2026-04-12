@@ -443,25 +443,30 @@ export function VaultPlayer({
       /* ignore */
     }
 
-    let decodeErrorTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Debounce MEDIA_ERR_DECODE / MEDIA_ERR_SRC_NOT_SUPPORTED — often transient with HLS. */
+    let softMediaErrorTimer: ReturnType<typeof setTimeout> | null = null;
 
     const clearStreamErrorForThisTrack = () => {
       setStreamError((prev) => (prev?.path === track_path ? null : prev));
     };
 
-    const scheduleDecodeErrorBanner = () => {
-      if (decodeErrorTimer) clearTimeout(decodeErrorTimer);
-      decodeErrorTimer = window.setTimeout(() => {
-        decodeErrorTimer = null;
+    const scheduleSoftMediaErrorBanner = () => {
+      if (softMediaErrorTimer) clearTimeout(softMediaErrorTimer);
+      softMediaErrorTimer = window.setTimeout(() => {
+        softMediaErrorTimer = null;
         const el = mediaRef.current;
         if (el !== media) return;
         if (!el.src?.trim()) return;
-        if (el.error?.code !== 3) return;
+        const c = el.error?.code;
+        if (c !== 3 && c !== 4) return;
         if (!el.paused) return;
+        const message =
+          c === 4
+            ? 'Stream format hiccup — press play again or refresh if audio never starts.'
+            : 'Stream decode hiccup — press play again or refresh if audio never starts.';
         setStreamError({
           path: track_path,
-          message:
-            'Stream decode hiccup — press play again or refresh if audio never starts.',
+          message,
         });
       }, 700);
     };
@@ -470,8 +475,8 @@ export function VaultPlayer({
       if (!media.src?.trim()) return;
       const code = media.error?.code;
       if (code === 1) return;
-      if (code === 3) {
-        scheduleDecodeErrorBanner();
+      if (code === 3 || code === 4) {
+        scheduleSoftMediaErrorBanner();
         return;
       }
       const map: Record<number, string> = {
@@ -488,9 +493,9 @@ export function VaultPlayer({
     };
 
     const onPlaying = () => {
-      if (decodeErrorTimer) {
-        clearTimeout(decodeErrorTimer);
-        decodeErrorTimer = null;
+      if (softMediaErrorTimer) {
+        clearTimeout(softMediaErrorTimer);
+        softMediaErrorTimer = null;
       }
       clearStreamErrorForThisTrack();
     };
@@ -576,9 +581,9 @@ export function VaultPlayer({
     media.addEventListener('error', onMediaError);
 
     return () => {
-      if (decodeErrorTimer) {
-        clearTimeout(decodeErrorTimer);
-        decodeErrorTimer = null;
+      if (softMediaErrorTimer) {
+        clearTimeout(softMediaErrorTimer);
+        softMediaErrorTimer = null;
       }
       media.removeEventListener('timeupdate', onTime);
       media.removeEventListener('loadedmetadata', onDuration);
