@@ -66,6 +66,7 @@ export function TrackPublishingForm({
     'single' | 'album'
   >(initial.album_assignment);
   const [albumId, setAlbumId] = useState(initial.album_id?.trim() ?? '');
+  const [instruments, setInstruments] = useState(initial.instruments ?? '');
 
   const onSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -102,6 +103,7 @@ export function TrackPublishingForm({
           lyrics_by: lyricsBy,
           album_assignment: albumAssignment,
           album_id: albumId,
+          instruments,
         });
         if (result.ok) {
           setMessage('Saved.');
@@ -127,6 +129,7 @@ export function TrackPublishingForm({
       lyricsBy,
       albumAssignment,
       albumId,
+      instruments,
       genesisOriginals.length,
       router,
     ],
@@ -316,6 +319,19 @@ export function TrackPublishingForm({
           and appends it to the end of the new one (order is not preserved here).
         </p>
       </fieldset>
+
+      <div className="space-y-2">
+        <Label htmlFor="edit_instruments">Instruments (optional)</Label>
+        <Input
+          id="edit_instruments"
+          value={instruments}
+          onChange={(e) => setInstruments(e.target.value)}
+          placeholder="piano, guitar"
+        />
+        <p className="text-xs text-muted-foreground">
+          Comma-separated; stored as normalized tags (same as new track form).
+        </p>
+      </div>
 
       <section className="space-y-4">
         <h3 className="text-sm font-medium text-foreground">Vault &amp; art paths</h3>

@@ -7,6 +7,7 @@ import { isPlatformAdmin } from '@/lib/admin-access';
 import { createServiceCatalog } from '@/lib/supabase-catalog';
 import { isCatalogAlbumId, isCatalogTrackId } from '@/lib/catalog-track-id';
 import type { CatalogTrackRow } from '@/lib/catalog-types';
+import { parseCommaSeparatedTags } from '@/lib/track-meta';
 import { resolveCoverOriginalForDb } from '@/lib/track-cover-original';
 
 function trimOrEmpty(s: string | undefined): string {
@@ -34,6 +35,8 @@ export type TrackPublishingInput = {
   album_assignment: 'single' | 'album';
   /** Required when `album_assignment` is `album`. */
   album_id: string;
+  /** Comma-separated instrument tags (same rules as create track). */
+  instruments: string;
 };
 
 export async function updateTrackPublishingFields(
@@ -76,6 +79,8 @@ export async function updateTrackPublishingFields(
     return { ok: false, error: coverResolved.error };
   }
 
+  const instruments = parseCommaSeparatedTags(trimOrEmpty(input.instruments));
+
   const { error: updateError } = await supabase
     .from('tracks')
     .update({
@@ -92,6 +97,7 @@ export async function updateTrackPublishingFields(
       lock_screen_art_path: nullIfEmpty(trimOrEmpty(input.lock_screen_art_path)),
       lyrics: nullIfEmpty(trimOrEmpty(input.lyrics)),
       lyrics_by: nullIfEmpty(trimOrEmpty(input.lyrics_by)),
+      instruments,
       updated_at: new Date().toISOString(),
     })
     .eq('id', trackId);

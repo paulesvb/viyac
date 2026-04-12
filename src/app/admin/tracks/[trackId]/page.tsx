@@ -11,6 +11,7 @@ import {
   fetchTrackPublishingForAdmin,
 } from '@/lib/admin-catalog';
 import { isCatalogTrackId } from '@/lib/catalog-track-id';
+import { formatTagLabel, normalizeTagList } from '@/lib/track-meta';
 import { Button } from '@/components/ui/button';
 
 type PageProps = {
@@ -92,6 +93,9 @@ export default async function AdminTrackEditPage({ params }: PageProps) {
           lyrics_by: track.lyrics_by ?? '',
           album_assignment: albumPlacement.album_assignment,
           album_id: albumPlacement.album_id,
+          instruments: normalizeTagList(track.instruments)
+            .map(formatTagLabel)
+            .join(', '),
         }}
       />
 

@@ -443,8 +443,37 @@ export function VaultPlayer({
       /* ignore */
     }
 
+    let decodeErrorTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearStreamErrorForThisTrack = () => {
+      setStreamError((prev) => (prev?.path === track_path ? null : prev));
+    };
+
+    const scheduleDecodeErrorBanner = () => {
+      if (decodeErrorTimer) clearTimeout(decodeErrorTimer);
+      decodeErrorTimer = window.setTimeout(() => {
+        decodeErrorTimer = null;
+        const el = mediaRef.current;
+        if (el !== media) return;
+        if (!el.src?.trim()) return;
+        if (el.error?.code !== 3) return;
+        if (!el.paused) return;
+        setStreamError({
+          path: track_path,
+          message:
+            'Stream decode hiccup — press play again or refresh if audio never starts.',
+        });
+      }, 700);
+    };
+
     const onMediaError = () => {
+      if (!media.src?.trim()) return;
       const code = media.error?.code;
+      if (code === 1) return;
+      if (code === 3) {
+        scheduleDecodeErrorBanner();
+        return;
+      }
       const map: Record<number, string> = {
         1: 'Playback aborted',
         2: 'Network error',
@@ -456,6 +485,14 @@ export function VaultPlayer({
         message:
           code != null ? map[code] ?? `Media error (${code})` : 'Playback failed',
       });
+    };
+
+    const onPlaying = () => {
+      if (decodeErrorTimer) {
+        clearTimeout(decodeErrorTimer);
+        decodeErrorTimer = null;
+      }
+      clearStreamErrorForThisTrack();
     };
 
     if (media.canPlayType('application/vnd.apple.mpegurl')) {
@@ -535,15 +572,21 @@ export function VaultPlayer({
     media.addEventListener('play', onPlay);
     media.addEventListener('pause', onPause);
     media.addEventListener('ended', onEnded);
+    media.addEventListener('playing', onPlaying);
     media.addEventListener('error', onMediaError);
 
     return () => {
+      if (decodeErrorTimer) {
+        clearTimeout(decodeErrorTimer);
+        decodeErrorTimer = null;
+      }
       media.removeEventListener('timeupdate', onTime);
       media.removeEventListener('loadedmetadata', onDuration);
       media.removeEventListener('durationchange', onDuration);
       media.removeEventListener('play', onPlay);
       media.removeEventListener('pause', onPause);
       media.removeEventListener('ended', onEnded);
+      media.removeEventListener('playing', onPlaying);
       media.removeEventListener('error', onMediaError);
       destroyHls();
       media.pause();
