@@ -125,6 +125,9 @@ export function toVaultTrackData(track: DashboardTrack): VaultTrackData {
     description_en: track.description_en,
     description_es: track.description_es,
     provenance_type: track.provenance_type,
+    ...(track.mastering_provenance
+      ? { mastering_provenance: track.mastering_provenance }
+      : {}),
     genres: track.genres,
     instruments: track.instruments,
     is_instrumental: track.is_instrumental,

@@ -51,7 +51,15 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} min-h-dvh antialiased`}
       >
-        <ClerkProvider appearance={{ baseTheme: dark }}>
+        <ClerkProvider
+          appearance={{ baseTheme: dark }}
+          {...(process.env.NODE_ENV === 'development'
+            ? {
+                signInForceRedirectUrl: '/sync',
+                signUpForceRedirectUrl: '/sync',
+              }
+            : {})}
+        >
           <NavbarWrapper />
           <main>{children}</main>
         </ClerkProvider>

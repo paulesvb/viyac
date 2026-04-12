@@ -33,11 +33,16 @@ export default async function AdminTracksPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">Tracks</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Edit visibility, featured, and public preview for any catalog track.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">Tracks</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Create tracks or edit visibility, featured, and public preview.
+          </p>
+        </div>
+        <Button asChild>
+          <Link href="/admin/tracks/new">New track</Link>
+        </Button>
       </div>
 
       {tracks.length === 0 ? (

@@ -6,16 +6,24 @@ import Link from 'next/link';
 import { updateTrackPublishingFields } from '@/actions/admin-catalog';
 import type { TrackPublishingInput } from '@/actions/admin-catalog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { GenesisOriginalOption } from '@/lib/admin-catalog';
 import type { CatalogTrackRow } from '@/lib/catalog-types';
 
 type Props = {
   trackId: string;
   slug: string;
   initial: TrackPublishingInput;
+  genesisOriginals: GenesisOriginalOption[];
 };
 
-export function TrackPublishingForm({ trackId, slug, initial }: Props) {
+export function TrackPublishingForm({
+  trackId,
+  slug,
+  initial,
+  genesisOriginals,
+}: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -28,17 +36,47 @@ export function TrackPublishingForm({ trackId, slug, initial }: Props) {
   const [showInHomeMore, setShowInHomeMore] = useState(
     initial.show_in_home_more_tracks,
   );
+  const [isCover, setIsCover] = useState(Boolean(initial.is_cover));
+  const [originalTrackId, setOriginalTrackId] = useState(
+    initial.original_track_id?.trim() ?? '',
+  );
+  const [vaultBackgroundVideoPath, setVaultBackgroundVideoPath] = useState(
+    initial.vault_background_video_path?.trim() ?? '',
+  );
+  const [thumbnailPath, setThumbnailPath] = useState(
+    initial.thumbnail_path?.trim() ?? '',
+  );
+  const [lockScreenArtPath, setLockScreenArtPath] = useState(
+    initial.lock_screen_art_path?.trim() ?? '',
+  );
 
   const onSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
       setMessage(null);
+      if (isCover) {
+        if (genesisOriginals.length === 0) {
+          setMessage(
+            'No Genesis originals in the catalog. Create a GENESIS track first, or uncheck cover.',
+          );
+          return;
+        }
+        if (!originalTrackId.trim()) {
+          setMessage('Choose the Genesis original this cover is based on.');
+          return;
+        }
+      }
       startTransition(async () => {
         const result = await updateTrackPublishingFields(trackId, slug, {
           visibility,
           featured,
           anonymous_visible: anonymousVisible,
           show_in_home_more_tracks: showInHomeMore,
+          is_cover: isCover,
+          original_track_id: originalTrackId,
+          vault_background_video_path: vaultBackgroundVideoPath,
+          thumbnail_path: thumbnailPath,
+          lock_screen_art_path: lockScreenArtPath,
         });
         if (result.ok) {
           setMessage('Saved.');
@@ -55,6 +93,12 @@ export function TrackPublishingForm({ trackId, slug, initial }: Props) {
       featured,
       anonymousVisible,
       showInHomeMore,
+      isCover,
+      originalTrackId,
+      vaultBackgroundVideoPath,
+      thumbnailPath,
+      lockScreenArtPath,
+      genesisOriginals.length,
       router,
     ],
   );
@@ -127,6 +171,99 @@ export function TrackPublishingForm({ trackId, slug, initial }: Props) {
         Uncheck to hide from that list only; the track can still be featured
         above, linked from albums, or opened by URL.
       </p>
+
+      <fieldset className="space-y-3 rounded-lg border border-border/60 p-4">
+        <legend className="px-1 text-sm font-medium text-foreground">
+          Cover version
+        </legend>
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={isCover}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setIsCover(on);
+              if (!on) setOriginalTrackId('');
+            }}
+            className="h-4 w-4 rounded border-input"
+          />
+          <span className="text-sm">
+            This track is a cover of a Genesis (GENESIS) original
+          </span>
+        </label>
+        {isCover ? (
+          <div className="space-y-2 pt-1">
+            <Label htmlFor="edit_original_track_id">Genesis original</Label>
+            <select
+              id="edit_original_track_id"
+              value={originalTrackId}
+              onChange={(e) => setOriginalTrackId(e.target.value)}
+              required
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">— Choose original —</option>
+              {genesisOriginals.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title} ({t.slug})
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Only Genesis tracks that are not themselves covers appear here
+              (any owner). This track is excluded from the list. A Genesis
+              original cannot be deleted while covers still reference it.
+            </p>
+            {genesisOriginals.length === 0 ? (
+              <p className="text-xs text-amber-600/90 dark:text-amber-400/90">
+                No eligible originals yet — set provenance to GENESIS on at
+                least one other track, or turn off cover for this row.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </fieldset>
+
+      <section className="space-y-4">
+        <h3 className="text-sm font-medium text-foreground">Vault &amp; art paths</h3>
+        <p className="text-xs text-muted-foreground">
+          Object keys in private vault or public assets buckets unless noted.
+          Leave empty to clear.
+        </p>
+        <div className="space-y-2">
+          <Label htmlFor="edit_vault_background_video_path">
+            Vault background video (optional)
+          </Label>
+          <Input
+            id="edit_vault_background_video_path"
+            value={vaultBackgroundVideoPath}
+            onChange={(e) => setVaultBackgroundVideoPath(e.target.value)}
+            placeholder="folder/loop.mp4"
+            className="font-mono text-sm"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="edit_thumbnail_path">Thumbnail path (optional)</Label>
+          <Input
+            id="edit_thumbnail_path"
+            value={thumbnailPath}
+            onChange={(e) => setThumbnailPath(e.target.value)}
+            placeholder="covers/track.jpg"
+            className="font-mono text-sm"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="edit_lock_screen_art_path">
+            Lock screen art path (optional)
+          </Label>
+          <Input
+            id="edit_lock_screen_art_path"
+            value={lockScreenArtPath}
+            onChange={(e) => setLockScreenArtPath(e.target.value)}
+            placeholder="covers/track-lock.jpg"
+            className="font-mono text-sm"
+          />
+        </div>
+      </section>
 
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={pending}>

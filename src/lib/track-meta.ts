@@ -12,6 +12,21 @@ export function normalizeTagList(v: unknown): string[] {
   return [];
 }
 
+/** Comma/semicolon-separated tags → lowercase slug tokens for `genres` / `instruments`. */
+export function parseCommaSeparatedTags(raw: string): string[] {
+  return raw
+    .split(/[,;]+/)
+    .map((s) =>
+      s
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, ''),
+    )
+    .filter(Boolean);
+}
+
 export function formatTagLabel(slug: string): string {
   const t = slug.trim();
   if (!t) return '';

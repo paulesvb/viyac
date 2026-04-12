@@ -21,6 +21,12 @@ export default function AdminLayout({
               Tracks
             </Link>
             <Link
+              href="/admin/albums"
+              className="text-cyan-400/90 underline-offset-4 hover:underline"
+            >
+              Albums
+            </Link>
+            <Link
               href="/home"
               className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
             >

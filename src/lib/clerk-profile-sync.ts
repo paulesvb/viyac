@@ -53,9 +53,15 @@ function supabaseErrorFields(err: unknown): Record<string, string> {
 /**
  * Upserts `public.profiles` (or SUPABASE_PROFILES_SCHEMA) — shared by Clerk webhook and session sync.
  */
+export type SyncClerkProfileOptions = {
+  /** When true, sets profiles.is_dev (local Clerk / testing). Webhooks should pass false. */
+  isDevProfile?: boolean;
+};
+
 export async function syncClerkProfileToSupabase(
   payload: ClerkProfilePayload,
   webhookEvent: 'user.created' | 'user.updated',
+  options?: SyncClerkProfileOptions,
 ): Promise<{ error: { message: string } | null }> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -115,6 +121,8 @@ export async function syncClerkProfileToSupabase(
       ? providerName
       : (existingProfile?.auth_provider ?? providerName);
 
+  const isDevProfile = options?.isDevProfile === true;
+
   const { error } = await profilesTable.upsert(
     {
       id: payload.id,
@@ -123,6 +131,7 @@ export async function syncClerkProfileToSupabase(
       auth_provider: resolvedPrimaryProvider,
       auth_providers: mergedProviders,
       updated_at: new Date().toISOString(),
+      is_dev: isDevProfile,
     },
     { onConflict: 'id' },
   );

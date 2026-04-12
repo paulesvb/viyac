@@ -14,11 +14,18 @@ function displayNameFromUser(
   return email.split('@')[0] ?? user.id;
 }
 
+export type EnsureClerkProfileOptions = {
+  /** Set profiles.is_dev when syncing from local `next dev` (see `/sync`). */
+  markDevProfile?: boolean;
+};
+
 /**
- * Ensures a `profiles` row exists after sign-in. Webhooks often miss local dev or misconfigured endpoints.
- * Safe to call on every protected page load (idempotent upsert).
+ * Upserts `profiles` from the signed-in Clerk user (session).
+ * Production uses the Clerk webhook; local dev uses `/sync` after sign-in.
  */
-export async function ensureClerkProfileSynced(): Promise<void> {
+export async function ensureClerkProfileSynced(
+  options?: EnsureClerkProfileOptions,
+): Promise<void> {
   const user = await currentUser();
   if (!user) return;
 
@@ -44,6 +51,7 @@ export async function ensureClerkProfileSynced(): Promise<void> {
       externalAccounts,
     },
     'user.updated',
+    { isDevProfile: options?.markDevProfile === true },
   );
 
   if (error) {

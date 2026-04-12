@@ -1,5 +1,18 @@
 # Supabase migrations
 
+## Dev and prod (two Supabase projects)
+
+Use **one Supabase project for local/dev** and **another for production**. Pair each with the matching **Clerk** environment (Development vs Production) so `public.profiles.id`, `api.tracks.owner_id`, and grants always reference users that exist in that Clerk app.
+
+- **Local:** `.env.local` → dev Supabase URL + anon/service role from the dev project; `npx supabase link --project-ref <dev-ref>` then `npx supabase db push` against dev.
+- **Production:** Set `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in Vercel (prod project). Run migrations against prod when you release (CLI linked to prod ref, CI, or SQL Editor).
+
+If you use **Vercel Preview** deployments, point them at the **dev** Supabase + Clerk test keys unless you intentionally want previews on production data.
+
+Avoid using a single shared database for both Clerk instances; you will get orphaned or mismatched `owner_id` values.
+
+---
+
 Apply with the [Supabase CLI](https://supabase.com/docs/guides/cli) from the repo root:
 
 ```bash

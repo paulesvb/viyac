@@ -7,6 +7,7 @@ const isAdminRoute = createRouteMatcher(['/admin(.*)']);
 
 const isProtectedRoute = createRouteMatcher([
   '/home(.*)',
+  '/sync(.*)',
   '/dashboard(.*)',
   '/admin(.*)',
   // /music: track pages can be public for anonymous_visible tracks; pages enforce access.

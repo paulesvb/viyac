@@ -1,7 +1,9 @@
 import 'server-only';
 
+import { isPlatformAdmin } from '@/lib/admin-access';
 import { createServiceCatalog } from '@/lib/supabase-catalog';
 import type { CatalogAlbumRow, CatalogTrackRow } from '@/lib/catalog-types';
+import { isMasteringProvenance } from '@/lib/catalog-types';
 import {
   getCatalogTrackIfAccessible,
   getCatalogTrackIfAnonymousAccessible,
@@ -113,19 +115,58 @@ async function fetchPrimaryAlbumTitleByTrackIds(
   return out;
 }
 
+function sortCatalogTrackRows(rows: CatalogTrackRow[]): CatalogTrackRow[] {
+  return [...rows].sort((a, b) => {
+    if (a.featured !== b.featured) return a.featured ? -1 : 1;
+    if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
+    return a.title.localeCompare(b.title);
+  });
+}
+
 /**
- * Tracks the signed-in user may play: owned, public/unlisted, or on a public/unlisted album.
+ * Tracks the signed-in user may play: owned, explicit viewer grants, public/unlisted,
+ * on a public/unlisted album, or (platform admin) any catalog track.
  */
 export async function listAccessibleCatalogTrackRows(
   userId: string,
 ): Promise<CatalogTrackRow[]> {
   const supabase = createServiceCatalog();
 
-  const [{ data: owned }, { data: visible }, { data: atRows }] = await Promise.all([
-    supabase.from('tracks').select('*').eq('owner_id', userId),
-    supabase.from('tracks').select('*').in('visibility', ['public', 'unlisted']),
-    supabase.from('album_tracks').select('track_id, albums ( visibility )'),
-  ]);
+  if (isPlatformAdmin(userId)) {
+    const { data, error } = await supabase.from('tracks').select('*');
+    if (error) {
+      console.error('[listAccessibleCatalogTrackRows] admin', error);
+      return [];
+    }
+    return sortCatalogTrackRows((data ?? []) as CatalogTrackRow[]);
+  }
+
+  const [{ data: owned }, { data: visible }, { data: atRows }, { data: grantRows }] =
+    await Promise.all([
+      supabase.from('tracks').select('*').eq('owner_id', userId),
+      supabase.from('tracks').select('*').in('visibility', ['public', 'unlisted']),
+      supabase.from('album_tracks').select('track_id, albums ( visibility )'),
+      supabase
+        .from('catalog_track_viewers')
+        .select('track_id')
+        .eq('viewer_user_id', userId),
+    ]);
+
+  const grantIds = new Set(
+    (grantRows ?? []).map((r) => r.track_id as string).filter(Boolean),
+  );
+  let grantedTracks: CatalogTrackRow[] = [];
+  if (grantIds.size > 0) {
+    const { data: gt, error: grantTracksError } = await supabase
+      .from('tracks')
+      .select('*')
+      .in('id', Array.from(grantIds));
+    if (grantTracksError) {
+      console.error('[listAccessibleCatalogTrackRows] granted', grantTracksError);
+    } else {
+      grantedTracks = (gt ?? []) as CatalogTrackRow[];
+    }
+  }
 
   const viaAlbumIds = new Set<string>();
   for (const r of (atRows ?? []) as AlbumsJoinRow[]) {
@@ -149,15 +190,12 @@ export async function listAccessibleCatalogTrackRows(
     ...((owned ?? []) as CatalogTrackRow[]),
     ...((visible ?? []) as CatalogTrackRow[]),
     ...viaAlbumTracks,
+    ...grantedTracks,
   ]) {
     map.set(t.id, t);
   }
 
-  return Array.from(map.values()).sort((a, b) => {
-    if (a.featured !== b.featured) return a.featured ? -1 : 1;
-    if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
-    return a.title.localeCompare(b.title);
-  });
+  return sortCatalogTrackRows(Array.from(map.values()));
 }
 
 export function catalogRowToDashboardTrack(
@@ -174,6 +212,10 @@ export function catalogRowToDashboardTrack(
     description_en: row.description_en ?? undefined,
     description_es: row.description_es ?? undefined,
     provenance_type: row.provenance_type ?? undefined,
+    ...(row.mastering_provenance &&
+    isMasteringProvenance(row.mastering_provenance)
+      ? { mastering_provenance: row.mastering_provenance }
+      : {}),
     genres: normalizeTagList(row.genres),
     instruments: normalizeTagList(row.instruments),
     is_instrumental: Boolean(row.is_instrumental),

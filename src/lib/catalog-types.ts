@@ -1,5 +1,19 @@
 import type { ProvenanceType } from '@/lib/provenance';
 
+/** `api.tracks.mastering_provenance` — human vs AI mastering chain. */
+export const MASTERING_PROVENANCE_VALUES = [
+  'STUDIO MASTERED',
+  'AI MASTERED',
+] as const;
+
+export type MasteringProvenance = (typeof MASTERING_PROVENANCE_VALUES)[number];
+
+export function isMasteringProvenance(
+  v: string | null | undefined,
+): v is MasteringProvenance {
+  return v === 'STUDIO MASTERED' || v === 'AI MASTERED';
+}
+
 /** Row shape for api.albums (music catalog). */
 export type CatalogAlbumRow = {
   id: string;
@@ -40,6 +54,12 @@ export type CatalogTrackRow = {
   show_in_home_more_tracks?: boolean | null;
   content_type: 'audio' | 'video';
   provenance_type: ProvenanceType | null;
+  /** True when this track is a cover; paired with `original_track_id`. */
+  is_cover?: boolean | null;
+  /** Genesis original this cover is based on; null if not a cover. */
+  original_track_id?: string | null;
+  /** Studio vs AI mastering (nullable for legacy rows). */
+  mastering_provenance?: MasteringProvenance | null;
   /** Standard stream (HLS or ~256k AAC URL); optional vs vault `track_path`. */
   stream_url: string | null;
   /** Private storage object key for master WAV; signed URL via master-download API after purchase. */

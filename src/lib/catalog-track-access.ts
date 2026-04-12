@@ -1,5 +1,7 @@
+import { isPlatformAdmin } from '@/lib/admin-access';
 import type { createServiceCatalog } from '@/lib/supabase-catalog';
 import type { CatalogTrackRow } from '@/lib/catalog-types';
+import { catalogTrackHasViewerGrant } from '@/lib/track-viewer-grants';
 
 type CatalogServiceClient = ReturnType<typeof createServiceCatalog>;
 
@@ -22,6 +24,8 @@ export async function getCatalogTrackIfAccessible(
 
   const row = track as CatalogTrackRow;
   if (row.owner_id === userId) return row;
+  if (isPlatformAdmin(userId)) return row;
+  if (await catalogTrackHasViewerGrant(supabase, trackId, userId)) return row;
   if (row.visibility === 'public' || row.visibility === 'unlisted') return row;
 
   const { data: viaAlbum } = await supabase

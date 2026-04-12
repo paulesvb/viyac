@@ -3,7 +3,11 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { TrackPublishingForm } from '@/components/admin/TrackPublishingForm';
 import { isPlatformAdmin } from '@/lib/admin-access';
-import { fetchTrackPublishingForAdmin } from '@/lib/admin-catalog';
+import {
+  fetchGenesisOriginalsForCoverPicker,
+  fetchTrackIdSlugTitleForAdmin,
+  fetchTrackPublishingForAdmin,
+} from '@/lib/admin-catalog';
 import { isCatalogTrackId } from '@/lib/catalog-track-id';
 import { Button } from '@/components/ui/button';
 
@@ -29,9 +33,26 @@ export default async function AdminTrackEditPage({ params }: PageProps) {
     redirect('/home');
   }
 
-  const track = await fetchTrackPublishingForAdmin(trackId);
+  const [track, genesisOriginals] = await Promise.all([
+    fetchTrackPublishingForAdmin(trackId),
+    fetchGenesisOriginalsForCoverPicker(trackId),
+  ]);
   if (!track) {
     notFound();
+  }
+
+  let genesisOriginalsForForm = genesisOriginals;
+  const currentOriginalId = track.original_track_id;
+  if (
+    currentOriginalId &&
+    !genesisOriginalsForForm.some((o) => o.id === currentOriginalId)
+  ) {
+    const extra = await fetchTrackIdSlugTitleForAdmin(currentOriginalId);
+    if (extra) {
+      genesisOriginalsForForm = [...genesisOriginalsForForm, extra].sort(
+        (a, b) => a.title.localeCompare(b.title),
+      );
+    }
   }
 
   return (
@@ -47,15 +68,35 @@ export default async function AdminTrackEditPage({ params }: PageProps) {
       </div>
 
       <TrackPublishingForm
+        key={track.updated_at}
         trackId={track.id}
         slug={track.slug}
+        genesisOriginals={genesisOriginalsForForm}
         initial={{
           visibility: track.visibility,
           featured: Boolean(track.featured),
           anonymous_visible: Boolean(track.anonymous_visible),
           show_in_home_more_tracks: track.show_in_home_more_tracks !== false,
+          is_cover: Boolean(track.is_cover),
+          original_track_id: track.original_track_id ?? '',
+          vault_background_video_path:
+            track.vault_background_video_path ?? '',
+          thumbnail_path: track.thumbnail_path ?? '',
+          lock_screen_art_path: track.lock_screen_art_path ?? '',
         }}
       />
+
+      <div className="border-t border-border pt-6">
+        <h3 className="text-sm font-medium text-foreground">Private access</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Grant specific signed-in users access when the track is not public.
+        </p>
+        <Button variant="outline" size="sm" className="mt-3" asChild>
+          <Link href={`/admin/tracks/${track.id}/viewers`}>
+            Curate viewers…
+          </Link>
+        </Button>
+      </div>
     </div>
   );
 }

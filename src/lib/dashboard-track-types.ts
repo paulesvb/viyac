@@ -1,3 +1,4 @@
+import type { MasteringProvenance } from '@/lib/catalog-types';
 import type { ProvenanceType } from '@/lib/provenance';
 
 export type DashboardTrack = {
@@ -29,6 +30,8 @@ export type DashboardTrack = {
   catalog_track_id?: string;
   /** Optional catalog provenance badge (GENESIS / HYBRID / ECHO). */
   provenance_type?: ProvenanceType;
+  /** Optional mastering chain label from `api.tracks.mastering_provenance`. */
+  mastering_provenance?: MasteringProvenance;
   /** Style tags from `api.tracks.genres`. */
   genres?: string[];
   /** Instrument tags from `api.tracks.instruments`. */

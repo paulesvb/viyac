@@ -45,6 +45,7 @@ async function main() {
       auth_provider: 'email',
       auth_providers: ['email'],
       role: 'user',
+      is_dev: true,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'id' },

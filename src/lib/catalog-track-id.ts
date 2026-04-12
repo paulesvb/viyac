@@ -4,3 +4,8 @@ const UUID_RE =
 export function isCatalogTrackId(id: string | undefined | null): id is string {
   return typeof id === 'string' && UUID_RE.test(id.trim());
 }
+
+/** Same UUID shape as catalog track ids (`api.albums.id`). */
+export function isCatalogAlbumId(id: string | undefined | null): id is string {
+  return isCatalogTrackId(id);
+}

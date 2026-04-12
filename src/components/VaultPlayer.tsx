@@ -53,6 +53,8 @@ export type VaultTrackData = {
   catalog_track_id?: string;
   /** Optional catalog provenance marker shown under player metadata. */
   provenance_type?: 'genesis' | 'hybrid' | 'echo';
+  /** Optional `api.tracks.mastering_provenance` label. */
+  mastering_provenance?: 'STUDIO MASTERED' | 'AI MASTERED';
   genres?: string[];
   instruments?: string[];
   is_instrumental?: boolean;
@@ -167,6 +169,7 @@ export function VaultPlayer({
     description_en,
     description_es,
     provenance_type,
+    mastering_provenance,
     genres: genresProp,
     instruments: instrumentsProp,
     is_instrumental,
@@ -732,6 +735,7 @@ export function VaultPlayer({
     showDescriptionBlock ||
     albumSecondLine ||
     Boolean(provenance_type) ||
+    Boolean(mastering_provenance) ||
     instrumentList.length > 0 ||
     Boolean(is_instrumental) ||
     Boolean(is_single) ||
@@ -1104,9 +1108,18 @@ export function VaultPlayer({
                 </p>
               ) : null}
 
-              {provenance_type ? (
-                <div className="flex justify-center pt-1">
-                  <ProvenanceBadge type={provenance_type} />
+              {provenance_type || mastering_provenance ? (
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                  {provenance_type ? (
+                    <ProvenanceBadge type={provenance_type} />
+                  ) : null}
+                  {mastering_provenance ? (
+                    <span className="rounded-full border border-violet-500/45 bg-violet-950/55 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-100/95">
+                      {mastering_provenance === 'STUDIO MASTERED'
+                        ? 'Studio mastered'
+                        : 'AI mastered'}
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
             </div>

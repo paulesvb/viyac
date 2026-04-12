@@ -99,6 +99,7 @@ export async function POST(req: Request) {
   const { error } = await syncClerkProfileToSupabase(
     toPayload(event.data, email),
     event.type,
+    { isDevProfile: false },
   );
 
   if (error) {
