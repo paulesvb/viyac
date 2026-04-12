@@ -4,7 +4,9 @@ import { notFound, redirect } from 'next/navigation';
 import { TrackPublishingForm } from '@/components/admin/TrackPublishingForm';
 import { isPlatformAdmin } from '@/lib/admin-access';
 import {
+  fetchAllAlbumsForAdmin,
   fetchGenesisOriginalsForCoverPicker,
+  fetchTrackAlbumPlacementForAdmin,
   fetchTrackIdSlugTitleForAdmin,
   fetchTrackPublishingForAdmin,
 } from '@/lib/admin-catalog';
@@ -33,9 +35,11 @@ export default async function AdminTrackEditPage({ params }: PageProps) {
     redirect('/home');
   }
 
-  const [track, genesisOriginals] = await Promise.all([
+  const [track, genesisOriginals, albums, albumPlacement] = await Promise.all([
     fetchTrackPublishingForAdmin(trackId),
     fetchGenesisOriginalsForCoverPicker(trackId),
+    fetchAllAlbumsForAdmin(),
+    fetchTrackAlbumPlacementForAdmin(trackId),
   ]);
   if (!track) {
     notFound();
@@ -71,6 +75,7 @@ export default async function AdminTrackEditPage({ params }: PageProps) {
         key={track.updated_at}
         trackId={track.id}
         slug={track.slug}
+        albums={albums}
         genesisOriginals={genesisOriginalsForForm}
         initial={{
           visibility: track.visibility,
@@ -83,6 +88,10 @@ export default async function AdminTrackEditPage({ params }: PageProps) {
             track.vault_background_video_path ?? '',
           thumbnail_path: track.thumbnail_path ?? '',
           lock_screen_art_path: track.lock_screen_art_path ?? '',
+          lyrics: track.lyrics ?? '',
+          lyrics_by: track.lyrics_by ?? '',
+          album_assignment: albumPlacement.album_assignment,
+          album_id: albumPlacement.album_id,
         }}
       />
 

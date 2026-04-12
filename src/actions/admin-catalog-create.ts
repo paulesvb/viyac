@@ -94,6 +94,10 @@ export type CreateTrackInput = {
   lock_screen_art_path: string;
   description_en: string;
   description_es: string;
+  /** Plain-text lyrics; `[SECTION]` on its own line starts a block. */
+  lyrics: string;
+  /** Optional lyrics writer credit. */
+  lyrics_by: string;
   genres: string;
   instruments: string;
   is_instrumental: boolean;
@@ -237,6 +241,8 @@ export async function createCatalogTrack(
       lock_screen_art_path: nullIfEmpty(trimOrEmpty(input.lock_screen_art_path)),
       description_en: nullIfEmpty(trimOrEmpty(input.description_en)),
       description_es: nullIfEmpty(trimOrEmpty(input.description_es)),
+      lyrics: nullIfEmpty(trimOrEmpty(input.lyrics)),
+      lyrics_by: nullIfEmpty(trimOrEmpty(input.lyrics_by)),
       genres,
       instruments,
       is_instrumental: Boolean(input.is_instrumental),

@@ -16,6 +16,7 @@ import {
   parseWaveformJson,
   type ParsedWaveform,
 } from '@/lib/waveform-json';
+import { LyricsDisplay } from '@/components/LyricsDisplay';
 import { ProvenanceBadge } from '@/components/ProvenanceBadge';
 import {
   buildCompactTrackMetaLine,
@@ -67,11 +68,20 @@ export type VaultTrackData = {
   /** ISO `YYYY-MM-DD` (use 1st of month for month/year). */
   release_date?: string;
   duration_ms?: number;
+  /** Plain-text lyrics (`[SECTION]` on own lines); shown below descriptions in the player. */
+  lyrics?: string;
+  /** Optional lyrics writer credit (shown with lyrics). */
+  lyrics_by?: string;
 };
 
 type VaultPlayerProps = {
   trackData: VaultTrackData;
   variant?: 'fullscreen' | 'embedded';
+  /**
+   * `inline` — lyrics render under meta when the track has lyrics and is not instrumental.
+   * `collapsible` — home featured card only: CTA toggles lyrics (saves vertical space).
+   */
+  lyricsPresentation?: 'inline' | 'collapsible';
 };
 
 type WaveformLoadState = ParsedWaveform | null | 'loading' | 'error';
@@ -158,6 +168,7 @@ const PLAY_BTN_PREMIUM =
 export function VaultPlayer({
   trackData,
   variant = 'fullscreen',
+  lyricsPresentation = 'inline',
 }: VaultPlayerProps) {
   const {
     bg_image_url,
@@ -178,6 +189,8 @@ export function VaultPlayer({
     anonymous_visible,
     release_date,
     duration_ms,
+    lyrics,
+    lyrics_by,
     waveform_json_path,
     waveform_json_url,
     waveform_json_vault_path,
@@ -286,6 +299,8 @@ export function VaultPlayer({
   const hlsRef = useRef<Hls | null>(null);
   const recoveringRef = useRef(false);
 
+  const [lyricsExpanded, setLyricsExpanded] = useState(false);
+
   const [playing, setPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -311,7 +326,12 @@ export function VaultPlayer({
     setPlaying(false);
     setStreamError(null);
     recoveringRef.current = false;
+    setLyricsExpanded(false);
   }, [track_path]);
+
+  useEffect(() => {
+    if (lyricsPresentation === 'inline') setLyricsExpanded(false);
+  }, [lyricsPresentation]);
 
   /** Background loop: paused on first frame until music plays; stays in sync with audio. */
   useEffect(() => {
@@ -760,7 +780,7 @@ export function VaultPlayer({
 
   return (
     <div
-      className={`relative w-full overflow-hidden ${shellMin} ${embedded ? 'rounded-xl bg-zinc-950' : ''} ${cinematic ? 'bg-zinc-950' : ''}`}
+      className={`relative w-full overflow-x-hidden overflow-y-auto ${shellMin} ${embedded ? 'rounded-xl bg-zinc-950' : ''} ${cinematic ? 'bg-zinc-950' : ''}`}
     >
       {showBackdropImage ? (
         <>
@@ -1124,6 +1144,59 @@ export function VaultPlayer({
               ) : null}
             </div>
           ) : null}
+
+          {(() => {
+            const hasLyricsBody = Boolean(lyrics?.trim());
+            const hasLyricsBy = Boolean(lyrics_by?.trim());
+            if ((!hasLyricsBody && !hasLyricsBy) || is_instrumental) return null;
+
+            const display = (
+              <LyricsDisplay
+                lyrics={lyrics}
+                lyricsBy={lyrics_by}
+                variant="vault"
+              />
+            );
+
+            if (lyricsPresentation === 'collapsible' && hasLyricsBody) {
+              return (
+                <div className="mt-8 border-t border-white/10 pt-5">
+                  {!lyricsExpanded ? (
+                    <button
+                      type="button"
+                      onClick={() => setLyricsExpanded(true)}
+                      className="w-full rounded-lg border border-cyan-400/35 bg-cyan-500/10 px-4 py-2.5 text-center text-sm font-medium text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-500/15"
+                    >
+                      Show lyrics
+                    </button>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => setLyricsExpanded(false)}
+                          className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300 hover:bg-white/10"
+                        >
+                          Hide lyrics
+                        </button>
+                      </div>
+                      {display}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (lyricsPresentation === 'collapsible' && !hasLyricsBody && hasLyricsBy) {
+              return (
+                <div className="mt-8 border-t border-white/10 pt-6">{display}</div>
+              );
+            }
+
+            return (
+              <div className="mt-8 border-t border-white/10 pt-6">{display}</div>
+            );
+          })()}
         </div>
       </div>
     </div>

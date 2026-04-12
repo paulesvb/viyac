@@ -8,14 +8,24 @@ import type { TrackPublishingInput } from '@/actions/admin-catalog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { GenesisOriginalOption } from '@/lib/admin-catalog';
+import type {
+  AdminAlbumSummary,
+  GenesisOriginalOption,
+} from '@/lib/admin-catalog';
 import type { CatalogTrackRow } from '@/lib/catalog-types';
+import { cn } from '@/lib/utils';
+
+const lyricsTextareaClass = cn(
+  'placeholder:text-muted-foreground w-full min-h-[120px] rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow]',
+  'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+);
 
 type Props = {
   trackId: string;
   slug: string;
   initial: TrackPublishingInput;
   genesisOriginals: GenesisOriginalOption[];
+  albums: AdminAlbumSummary[];
 };
 
 export function TrackPublishingForm({
@@ -23,6 +33,7 @@ export function TrackPublishingForm({
   slug,
   initial,
   genesisOriginals,
+  albums,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -49,6 +60,12 @@ export function TrackPublishingForm({
   const [lockScreenArtPath, setLockScreenArtPath] = useState(
     initial.lock_screen_art_path?.trim() ?? '',
   );
+  const [lyrics, setLyrics] = useState(initial.lyrics ?? '');
+  const [lyricsBy, setLyricsBy] = useState(initial.lyrics_by ?? '');
+  const [albumAssignment, setAlbumAssignment] = useState<
+    'single' | 'album'
+  >(initial.album_assignment);
+  const [albumId, setAlbumId] = useState(initial.album_id?.trim() ?? '');
 
   const onSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -66,6 +83,10 @@ export function TrackPublishingForm({
           return;
         }
       }
+      if (albumAssignment === 'album' && !albumId.trim()) {
+        setMessage('Choose an album, or select Single (not on an album).');
+        return;
+      }
       startTransition(async () => {
         const result = await updateTrackPublishingFields(trackId, slug, {
           visibility,
@@ -77,6 +98,10 @@ export function TrackPublishingForm({
           vault_background_video_path: vaultBackgroundVideoPath,
           thumbnail_path: thumbnailPath,
           lock_screen_art_path: lockScreenArtPath,
+          lyrics,
+          lyrics_by: lyricsBy,
+          album_assignment: albumAssignment,
+          album_id: albumId,
         });
         if (result.ok) {
           setMessage('Saved.');
@@ -98,6 +123,10 @@ export function TrackPublishingForm({
       vaultBackgroundVideoPath,
       thumbnailPath,
       lockScreenArtPath,
+      lyrics,
+      lyricsBy,
+      albumAssignment,
+      albumId,
       genesisOriginals.length,
       router,
     ],
@@ -223,6 +252,71 @@ export function TrackPublishingForm({
         ) : null}
       </fieldset>
 
+      <fieldset className="space-y-3 rounded-lg border border-border/60 p-4">
+        <legend className="px-1 text-sm font-medium text-foreground">
+          Album placement
+        </legend>
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="radio"
+            name="edit_album_assignment"
+            checked={albumAssignment === 'single'}
+            onChange={() => {
+              setAlbumAssignment('single');
+              setAlbumId('');
+            }}
+            className="h-4 w-4 border-input"
+          />
+          <span className="text-sm">Single (not on an album)</span>
+        </label>
+        <label
+          className={cn(
+            'flex items-center gap-2',
+            albums.length === 0 ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+          )}
+        >
+          <input
+            type="radio"
+            name="edit_album_assignment"
+            checked={albumAssignment === 'album'}
+            disabled={albums.length === 0}
+            onChange={() => setAlbumAssignment('album')}
+            className="h-4 w-4 border-input"
+          />
+          <span className="text-sm">On an album</span>
+        </label>
+        {albumAssignment === 'album' ? (
+          <div className="space-y-2 pt-1">
+            <Label htmlFor="edit_album_id">Album</Label>
+            <select
+              id="edit_album_id"
+              value={albumId}
+              onChange={(e) => setAlbumId(e.target.value)}
+              required
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">— Choose album —</option>
+              {albums.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.title} ({a.slug})
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {albums.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            No albums yet. Create one under{' '}
+            <span className="text-foreground/90">Admin → Albums</span>, or keep
+            this track as a single.
+          </p>
+        ) : null}
+        <p className="text-xs text-muted-foreground">
+          Changing album removes this track from the previous album’s track list
+          and appends it to the end of the new one (order is not preserved here).
+        </p>
+      </fieldset>
+
       <section className="space-y-4">
         <h3 className="text-sm font-medium text-foreground">Vault &amp; art paths</h3>
         <p className="text-xs text-muted-foreground">
@@ -261,6 +355,36 @@ export function TrackPublishingForm({
             onChange={(e) => setLockScreenArtPath(e.target.value)}
             placeholder="covers/track-lock.jpg"
             className="font-mono text-sm"
+          />
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <h3 className="text-sm font-medium text-foreground">Lyrics (optional)</h3>
+        <div className="space-y-2">
+          <Label htmlFor="edit_lyrics">Lyrics</Label>
+          <textarea
+            id="edit_lyrics"
+            value={lyrics}
+            onChange={(e) => setLyrics(e.target.value)}
+            className={lyricsTextareaClass}
+            rows={14}
+            placeholder={'[VERSE]\nLine one…\n\n[CHORUS]\nHook line…'}
+          />
+          <p className="text-xs text-muted-foreground">
+            Section headers on their own line:{' '}
+            <code className="text-[11px]">[VERSE]</code>,{' '}
+            <code className="text-[11px]">[CHORUS]</code>. Leave empty to clear
+            stored lyrics.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="edit_lyrics_by">Lyrics by (optional)</Label>
+          <Input
+            id="edit_lyrics_by"
+            value={lyricsBy}
+            onChange={(e) => setLyricsBy(e.target.value)}
+            placeholder="Writer or credit line"
           />
         </div>
       </section>

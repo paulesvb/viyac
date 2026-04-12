@@ -11,6 +11,10 @@ export type DashboardTrack = {
   content_type?: 'video' | 'audio';
   description_en?: string;
   description_es?: string;
+  /** Optional plain-text lyrics (`[SECTION]` tags on own lines; see `lyrics-brackets`). */
+  lyrics?: string;
+  /** Optional lyrics writer credit. */
+  lyrics_by?: string;
   /** Public `assets` key or full URL to waveform.json */
   waveform_json_path?: string;
   /** Vault key for waveform.json (signed URL); overrides public waveform when set */

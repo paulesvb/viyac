@@ -158,5 +158,7 @@ export function toVaultTrackData(track: DashboardTrack): VaultTrackData {
       : {}),
     ...(track.release_date?.trim() ? { release_date: track.release_date.trim() } : {}),
     ...(track.duration_ms != null ? { duration_ms: track.duration_ms } : {}),
+    ...(track.lyrics?.trim() ? { lyrics: track.lyrics.trim() } : {}),
+    ...(track.lyrics_by?.trim() ? { lyrics_by: track.lyrics_by.trim() } : {}),
   };
 }

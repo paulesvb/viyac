@@ -2,7 +2,7 @@ import 'server-only';
 
 import { createServiceCatalog } from '@/lib/supabase-catalog';
 import type { CatalogAlbumRow, CatalogTrackRow } from '@/lib/catalog-types';
-import { isCatalogTrackId } from '@/lib/catalog-track-id';
+import { isCatalogAlbumId, isCatalogTrackId } from '@/lib/catalog-track-id';
 
 export type AdminTrackSummary = {
   id: string;
@@ -127,7 +127,41 @@ export type AdminTrackPublishing = Pick<
   | 'vault_background_video_path'
   | 'thumbnail_path'
   | 'lock_screen_art_path'
+  | 'lyrics'
+  | 'lyrics_by'
 >;
+
+export type TrackAlbumPlacement = {
+  album_assignment: 'single' | 'album';
+  /** When `album_assignment` is `album`, the `api.albums.id` this track is linked to. */
+  album_id: string;
+};
+
+/** Current `album_tracks` placement for edit UI (first link wins if multiple exist). */
+export async function fetchTrackAlbumPlacementForAdmin(
+  trackId: string,
+): Promise<TrackAlbumPlacement> {
+  if (!isCatalogTrackId(trackId)) {
+    return { album_assignment: 'single', album_id: '' };
+  }
+  const supabase = createServiceCatalog();
+  const { data, error } = await supabase
+    .from('album_tracks')
+    .select('album_id, sort_order')
+    .eq('track_id', trackId)
+    .order('sort_order', { ascending: true });
+
+  if (error) {
+    console.error('[fetchTrackAlbumPlacementForAdmin]', error);
+    return { album_assignment: 'single', album_id: '' };
+  }
+  const rows = data ?? [];
+  if (rows.length === 0) {
+    return { album_assignment: 'single', album_id: '' };
+  }
+  const first = rows[0] as { album_id: string };
+  return { album_assignment: 'album', album_id: first.album_id };
+}
 
 /** Load one track for publishing form (platform admin only — gate callers). */
 export async function fetchTrackPublishingForAdmin(
@@ -137,7 +171,7 @@ export async function fetchTrackPublishingForAdmin(
   const { data, error } = await supabase
     .from('tracks')
     .select(
-      'id, slug, title, visibility, featured, anonymous_visible, show_in_home_more_tracks, owner_id, is_cover, original_track_id, updated_at, vault_background_video_path, thumbnail_path, lock_screen_art_path',
+      'id, slug, title, visibility, featured, anonymous_visible, show_in_home_more_tracks, owner_id, is_cover, original_track_id, updated_at, vault_background_video_path, thumbnail_path, lock_screen_art_path, lyrics, lyrics_by',
     )
     .eq('id', trackId)
     .maybeSingle();

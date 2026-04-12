@@ -74,6 +74,10 @@ export type CatalogTrackRow = {
   lock_screen_art_path: string | null;
   description_en: string | null;
   description_es: string | null;
+  /** Plain-text lyrics; section lines like `[VERSE]` on their own line. */
+  lyrics?: string | null;
+  /** Optional credit for who wrote the lyrics. */
+  lyrics_by?: string | null;
   featured: boolean;
   sort_order: number;
   created_at: string;

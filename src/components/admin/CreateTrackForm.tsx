@@ -56,6 +56,8 @@ export function CreateTrackForm({ albums, genesisOriginals }: Props) {
   const [lockScreenArtPath, setLockScreenArtPath] = useState('');
   const [descriptionEn, setDescriptionEn] = useState('');
   const [descriptionEs, setDescriptionEs] = useState('');
+  const [lyrics, setLyrics] = useState('');
+  const [lyricsBy, setLyricsBy] = useState('');
   const [genres, setGenres] = useState('');
   const [instruments, setInstruments] = useState('');
   const [isInstrumental, setIsInstrumental] = useState(false);
@@ -103,6 +105,8 @@ export function CreateTrackForm({ albums, genesisOriginals }: Props) {
         lock_screen_art_path: lockScreenArtPath,
         description_en: descriptionEn,
         description_es: descriptionEs,
+        lyrics,
+        lyrics_by: lyricsBy,
         genres,
         instruments,
         is_instrumental: isInstrumental,
@@ -137,6 +141,8 @@ export function CreateTrackForm({ albums, genesisOriginals }: Props) {
       lockScreenArtPath,
       descriptionEn,
       descriptionEs,
+      lyrics,
+      lyricsBy,
       genres,
       instruments,
       isInstrumental,
@@ -509,6 +515,32 @@ export function CreateTrackForm({ albums, genesisOriginals }: Props) {
             className={textareaClass}
             rows={4}
             placeholder="Descripción…"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="lyrics">Lyrics (optional)</Label>
+          <textarea
+            id="lyrics"
+            value={lyrics}
+            onChange={(e) => setLyrics(e.target.value)}
+            className={textareaClass}
+            rows={12}
+            placeholder={'[VERSE]\nLine one…\n\n[CHORUS]\nHook line…'}
+          />
+          <p className="text-xs text-muted-foreground">
+            Put section names on their own line in brackets, e.g.{' '}
+            <code className="text-[11px]">[VERSE]</code>,{' '}
+            <code className="text-[11px]">[CHORUS]</code> (letters, numbers,
+            spaces, hyphen). Anything else stays as lyric text.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="lyrics_by">Lyrics by (optional)</Label>
+          <Input
+            id="lyrics_by"
+            value={lyricsBy}
+            onChange={(e) => setLyricsBy(e.target.value)}
+            placeholder="Writer or credit line"
           />
         </div>
       </section>

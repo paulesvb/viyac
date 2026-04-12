@@ -211,6 +211,8 @@ export function catalogRowToDashboardTrack(
     content_type: row.content_type === 'audio' ? 'audio' : 'video',
     description_en: row.description_en ?? undefined,
     description_es: row.description_es ?? undefined,
+    ...(row.lyrics?.trim() ? { lyrics: row.lyrics.trim() } : {}),
+    ...(row.lyrics_by?.trim() ? { lyrics_by: row.lyrics_by.trim() } : {}),
     provenance_type: row.provenance_type ?? undefined,
     ...(row.mastering_provenance &&
     isMasteringProvenance(row.mastering_provenance)

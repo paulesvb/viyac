@@ -90,6 +90,7 @@ export function DashboardFeaturedMarquee({ track }: Props) {
         <VaultPlayer
           variant={fullPlayer ? 'fullscreen' : 'embedded'}
           trackData={toVaultTrackData(track)}
+          lyricsPresentation={fullPlayer ? 'inline' : 'collapsible'}
         />
       </div>
     </section>
