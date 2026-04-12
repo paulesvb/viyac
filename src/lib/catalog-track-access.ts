@@ -283,3 +283,65 @@ export async function vaultPathAllowedForAnonymous(
   }
   return false;
 }
+
+/**
+ * Signed-in vault access: object path must belong to a catalog track this user may access
+ * (same rules as {@link getCatalogTrackIfAccessible}). Uses prefix queries so we do not scan
+ * the full catalog on every HLS segment.
+ */
+export async function vaultPathAllowedForUser(
+  supabase: CatalogServiceClient,
+  userId: string,
+  objectPath: string,
+): Promise<boolean> {
+  const norm = objectPath.trim().replace(/^\/+/, '');
+  if (!norm) return false;
+
+  const parts = norm.split('/').filter(Boolean);
+  if (parts.length === 0) return false;
+
+  const seen = new Set<string>();
+
+  for (let d = parts.length; d >= 1; d--) {
+    const prefix = parts.slice(0, d).join('/');
+    const pattern = `${prefix}%`;
+
+    const [byTrackPath, byWaveform, byBg] = await Promise.all([
+      supabase.from('tracks').select('*').ilike('track_path', pattern),
+      supabase
+        .from('tracks')
+        .select('*')
+        .ilike('waveform_json_vault_path', pattern),
+      supabase
+        .from('tracks')
+        .select('*')
+        .ilike('vault_background_video_path', pattern),
+    ]);
+
+    for (const res of [byTrackPath, byWaveform, byBg]) {
+      if (res.error) {
+        console.error('[vaultPathAllowedForUser]', res.error);
+      }
+    }
+
+    const merged = [
+      ...((byTrackPath.data ?? []) as CatalogTrackRow[]),
+      ...((byWaveform.data ?? []) as CatalogTrackRow[]),
+      ...((byBg.data ?? []) as CatalogTrackRow[]),
+    ];
+
+    for (const row of merged) {
+      if (seen.has(row.id)) continue;
+      if (!vaultBundleContainsPath(norm, row)) continue;
+      seen.add(row.id);
+      const allowed = await getCatalogTrackIfAccessible(
+        supabase,
+        userId,
+        row.id,
+      );
+      if (allowed) return true;
+    }
+  }
+
+  return false;
+}
