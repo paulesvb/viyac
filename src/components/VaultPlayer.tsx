@@ -444,14 +444,14 @@ export function VaultPlayer({
     }
 
     /** Debounce MEDIA_ERR_DECODE / MEDIA_ERR_SRC_NOT_SUPPORTED — often transient with HLS. */
-    let softMediaErrorTimer: ReturnType<typeof setTimeout> | null = null;
+    let softMediaErrorTimer: number | null = null;
 
     const clearStreamErrorForThisTrack = () => {
       setStreamError((prev) => (prev?.path === track_path ? null : prev));
     };
 
     const scheduleSoftMediaErrorBanner = () => {
-      if (softMediaErrorTimer) clearTimeout(softMediaErrorTimer);
+      if (softMediaErrorTimer) window.clearTimeout(softMediaErrorTimer);
       softMediaErrorTimer = window.setTimeout(() => {
         softMediaErrorTimer = null;
         const el = mediaRef.current;
@@ -494,7 +494,7 @@ export function VaultPlayer({
 
     const onPlaying = () => {
       if (softMediaErrorTimer) {
-        clearTimeout(softMediaErrorTimer);
+        window.clearTimeout(softMediaErrorTimer);
         softMediaErrorTimer = null;
       }
       clearStreamErrorForThisTrack();
@@ -582,7 +582,7 @@ export function VaultPlayer({
 
     return () => {
       if (softMediaErrorTimer) {
-        clearTimeout(softMediaErrorTimer);
+        window.clearTimeout(softMediaErrorTimer);
         softMediaErrorTimer = null;
       }
       media.removeEventListener('timeupdate', onTime);
