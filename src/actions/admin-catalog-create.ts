@@ -6,7 +6,10 @@ import { revalidatePath } from 'next/cache';
 import { isPlatformAdmin } from '@/lib/admin-access';
 import { slugifyCatalogTitle, withNumericSuffix } from '@/lib/catalog-slug';
 import { isCatalogAlbumId } from '@/lib/catalog-track-id';
-import { createServiceCatalog } from '@/lib/supabase-catalog';
+import {
+  createServiceCatalog,
+  formatCatalogPostgrestError,
+} from '@/lib/supabase-catalog';
 import type { CatalogAlbumRow, CatalogTrackRow } from '@/lib/catalog-types';
 import { isMasteringProvenance } from '@/lib/catalog-types';
 import { isProvenanceType } from '@/lib/provenance';
@@ -258,7 +261,7 @@ export async function createCatalogTrack(
 
   if (error || !data) {
     console.error('[createCatalogTrack]', error);
-    const msg = error?.message ?? 'Insert failed.';
+    const msg = formatCatalogPostgrestError(error?.message, 'Insert failed.');
     if (msg.includes('profiles') || msg.includes('foreign key')) {
       return {
         ok: false,
@@ -294,7 +297,7 @@ export async function createCatalogTrack(
       await supabase.from('tracks').delete().eq('id', trackId);
       return {
         ok: false,
-        error: `Could not attach track to album: ${linkErr.message}`,
+        error: `Could not attach track to album: ${formatCatalogPostgrestError(linkErr.message, 'Insert failed.')}`,
       };
     }
 
@@ -369,7 +372,7 @@ export async function createCatalogAlbum(
 
   if (error || !data) {
     console.error('[createCatalogAlbum]', error);
-    const msg = error?.message ?? 'Insert failed.';
+    const msg = formatCatalogPostgrestError(error?.message, 'Insert failed.');
     if (msg.includes('profiles') || msg.includes('foreign key')) {
       return {
         ok: false,

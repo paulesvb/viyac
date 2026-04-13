@@ -8,7 +8,7 @@ export type AdminUserOption = {
   id: string;
   label: string;
   email: string | null;
-  /** Synced from local `next dev` / `/sync` (profiles.is_dev). */
+  /** Optional `profiles.is_dev` marker (e.g. seed / tooling); not used for auth. */
   isDev: boolean;
 };
 

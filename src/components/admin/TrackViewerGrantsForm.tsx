@@ -81,9 +81,9 @@ export function TrackViewerGrantsForm({
         <p className="text-sm text-muted-foreground">
           No profiles match. Try another search or confirm rows exist in{' '}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">profiles</code>.
-          Local sign-in rows show a Dev badge when{' '}
+          Rows may show a Dev badge when{' '}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">is_dev</code> is
-          true.
+          true (optional marker).
         </p>
       ) : (
         <ul className="max-w-2xl divide-y divide-border rounded-lg border border-border">

@@ -1,8 +1,23 @@
 import 'server-only';
 
-import { createServiceCatalog } from '@/lib/supabase-catalog';
+import {
+  createServiceCatalog,
+  formatCatalogPostgrestError,
+} from '@/lib/supabase-catalog';
 import type { CatalogAlbumRow, CatalogTrackRow } from '@/lib/catalog-types';
 import { isCatalogAlbumId, isCatalogTrackId } from '@/lib/catalog-track-id';
+
+function logCatalogQueryFailure(
+  scope: string,
+  error: { message?: string; code?: string; details?: string; hint?: string },
+) {
+  console.warn(`[${scope}]`, {
+    message: formatCatalogPostgrestError(error.message),
+    code: error.code,
+    details: error.details,
+    hint: error.hint,
+  });
+}
 
 export type AdminTrackSummary = {
   id: string;
@@ -28,7 +43,7 @@ export async function fetchAllTracksForAdmin(): Promise<AdminTrackSummary[]> {
     .order('title', { ascending: true });
 
   if (error) {
-    console.error('[fetchAllTracksForAdmin]', error);
+    logCatalogQueryFailure('fetchAllTracksForAdmin', error);
     return [];
   }
 
@@ -53,7 +68,7 @@ export async function fetchAllAlbumsForAdmin(): Promise<AdminAlbumSummary[]> {
     .order('title', { ascending: true });
 
   if (error) {
-    console.error('[fetchAllAlbumsForAdmin]', error);
+    logCatalogQueryFailure('fetchAllAlbumsForAdmin', error);
     return [];
   }
 
@@ -86,7 +101,7 @@ export async function fetchGenesisOriginalsForCoverPicker(
   const { data, error } = await q;
 
   if (error) {
-    console.error('[fetchGenesisOriginalsForCoverPicker]', error);
+    logCatalogQueryFailure('fetchGenesisOriginalsForCoverPicker', error);
     return [];
   }
 
@@ -105,7 +120,7 @@ export async function fetchTrackIdSlugTitleForAdmin(
     .eq('id', trackId)
     .maybeSingle();
   if (error || !data) {
-    if (error) console.error('[fetchTrackIdSlugTitleForAdmin]', error);
+    if (error) logCatalogQueryFailure('fetchTrackIdSlugTitleForAdmin', error);
     return null;
   }
   return data as GenesisOriginalOption;
@@ -153,7 +168,7 @@ export async function fetchTrackAlbumPlacementForAdmin(
     .order('sort_order', { ascending: true });
 
   if (error) {
-    console.error('[fetchTrackAlbumPlacementForAdmin]', error);
+    logCatalogQueryFailure('fetchTrackAlbumPlacementForAdmin', error);
     return { album_assignment: 'single', album_id: '' };
   }
   const rows = data ?? [];
@@ -178,7 +193,7 @@ export async function fetchTrackPublishingForAdmin(
     .maybeSingle();
 
   if (error || !data) {
-    if (error) console.error('[fetchTrackPublishingForAdmin]', error);
+    if (error) logCatalogQueryFailure('fetchTrackPublishingForAdmin', error);
     return null;
   }
 

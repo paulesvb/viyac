@@ -1,7 +1,7 @@
--- Marks profiles created/updated from local Clerk (next dev) vs production webhook users.
+-- Optional marker on profiles rows (e.g. seed / tooling). Webhook upserts use is_dev = false.
 
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS is_dev boolean NOT NULL DEFAULT false;
 
 COMMENT ON COLUMN public.profiles.is_dev IS
-  'True when the row was last upserted from local development (Clerk Development + /sync); false for production webhook users.';
+  'Optional: true for dev/seed tooling; false when upserted via Clerk production webhook.';

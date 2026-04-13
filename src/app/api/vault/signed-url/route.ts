@@ -1,9 +1,11 @@
 import { auth } from '@clerk/nextjs/server';
+import { unstable_noStore as noStore } from 'next/cache';
 import { type NextRequest, NextResponse } from 'next/server';
 
-import { vaultPathAllowedForAnonymous } from '@/lib/catalog-track-access';
-import { createServiceCatalog } from '@/lib/supabase-catalog';
 import { getVaultSignedUrl } from '@/lib/vault';
+import { vaultReadAllowedForUser } from '@/lib/vault-read-authorization';
+
+export const dynamic = 'force-dynamic';
 
 const EXPIRES_SECONDS = 60 * 60 * 2;
 
@@ -16,6 +18,7 @@ function isUnsafePath(p: string): boolean {
  * Query: `path` — object key (e.g. `rocket-57/waveform.json`).
  */
 export async function GET(request: NextRequest) {
+  noStore();
   const path = request.nextUrl.searchParams.get('path')?.trim();
   if (!path || isUnsafePath(path)) {
     return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
@@ -23,11 +26,11 @@ export async function GET(request: NextRequest) {
 
   const { userId } = await auth();
   if (!userId) {
-    const supabase = createServiceCatalog();
-    const allowed = await vaultPathAllowedForAnonymous(supabase, path);
-    if (!allowed) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  if (!(await vaultReadAllowedForUser(userId, path))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   try {

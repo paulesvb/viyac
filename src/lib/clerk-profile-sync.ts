@@ -51,10 +51,10 @@ function supabaseErrorFields(err: unknown): Record<string, string> {
 }
 
 /**
- * Upserts `public.profiles` (or SUPABASE_PROFILES_SCHEMA) — shared by Clerk webhook and session sync.
+ * Upserts `public.profiles` (or SUPABASE_PROFILES_SCHEMA) — used from the Clerk webhook.
  */
 export type SyncClerkProfileOptions = {
-  /** When true, sets profiles.is_dev (local Clerk / testing). Webhooks should pass false. */
+  /** When true, sets `profiles.is_dev` (reserved for tooling; webhooks pass false). */
   isDevProfile?: boolean;
 };
 

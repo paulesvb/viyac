@@ -34,7 +34,7 @@ Single migration defining:
 
 **Reset (optional):** uncomment the `DROP SCHEMA` / `DROP TABLE` lines at the top of the migration, or run them manually, then apply the file.
 
-**Expose `api` for PostgREST:** Project Settings → API → **Exposed schemas** — include **`api`** if the browser client should use the REST API for these tables.
+**Expose `api` for PostgREST:** Project Settings → API → **Exposed schemas** — include **`api`**. Without it, PostgREST returns `Invalid schema: api` for **any** REST request to `api.*`, including the app’s **service-role** catalog writes (`createServiceCatalog()`).
 
 **Clerk + RLS:** Policies use `auth.jwt()->>'sub'`. Until Clerk JWT is wired into Supabase, use **Next.js routes + service role** (see `createServiceCatalog()`).
 

@@ -4,7 +4,10 @@ import { auth } from '@clerk/nextjs/server';
 import { revalidatePath } from 'next/cache';
 
 import { isPlatformAdmin } from '@/lib/admin-access';
-import { createServiceCatalog } from '@/lib/supabase-catalog';
+import {
+  createServiceCatalog,
+  formatCatalogPostgrestError,
+} from '@/lib/supabase-catalog';
 import { isCatalogAlbumId, isCatalogTrackId } from '@/lib/catalog-track-id';
 import type { CatalogTrackRow } from '@/lib/catalog-types';
 import { parseCommaSeparatedTags } from '@/lib/track-meta';
@@ -63,7 +66,12 @@ export async function updateTrackPublishingFields(
     .maybeSingle();
 
   if (fetchError || !row) {
-    return { ok: false, error: 'Track not found.' };
+    return {
+      ok: false,
+      error: fetchError
+        ? formatCatalogPostgrestError(fetchError.message, 'Track not found.')
+        : 'Track not found.',
+    };
   }
 
   if ((row as { slug: string }).slug !== slug) {
@@ -104,7 +112,10 @@ export async function updateTrackPublishingFields(
 
   if (updateError) {
     console.error('[updateTrackPublishingFields]', updateError);
-    return { ok: false, error: updateError.message };
+    return {
+      ok: false,
+      error: formatCatalogPostgrestError(updateError.message, 'Update failed.'),
+    };
   }
 
   const albumMode = input.album_assignment === 'album' ? 'album' : 'single';
@@ -164,7 +175,10 @@ export async function updateTrackPublishingFields(
       .eq('track_id', trackId);
     if (delErr) {
       console.error('[updateTrackPublishingFields] album_tracks delete', delErr);
-      return { ok: false, error: delErr.message };
+      return {
+        ok: false,
+        error: formatCatalogPostgrestError(delErr.message, 'Update failed.'),
+      };
     }
 
     if (albumMode === 'album' && isCatalogAlbumId(albumIdForLink)) {
@@ -193,7 +207,7 @@ export async function updateTrackPublishingFields(
         revalidatePath('/admin/albums');
         return {
           ok: false,
-          error: `Could not attach track to album: ${linkErr.message}`,
+          error: `Could not attach track to album: ${formatCatalogPostgrestError(linkErr.message, 'Update failed.')}`,
         };
       }
     }

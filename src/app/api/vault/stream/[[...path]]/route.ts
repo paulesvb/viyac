@@ -2,32 +2,9 @@ import { auth } from '@clerk/nextjs/server';
 import { unstable_noStore as noStore } from 'next/cache';
 import { type NextRequest, NextResponse } from 'next/server';
 
-import {
-  vaultObjectPathMatchesTrack,
-  vaultPathAllowedForAnonymous,
-  vaultPathAllowedForUser,
-} from '@/lib/catalog-track-access';
-import { getDashboardTracks } from '@/lib/dashboard-tracks';
 import { rewriteHlsManifest } from '@/lib/hls-manifest-rewrite';
-import { createServiceCatalog } from '@/lib/supabase-catalog';
+import { vaultReadAllowedForUser } from '@/lib/vault-read-authorization';
 import { getVaultSignedUrl } from '@/lib/vault';
-
-/** Config/env fallback tracks (not in `api.tracks`) — any signed-in user may stream these paths. */
-function dashboardStaticVaultAllows(objectPath: string): boolean {
-  const o = objectPath.trim().replace(/^\/+/, '');
-  if (!o) return false;
-  for (const t of getDashboardTracks()) {
-    const paths = [
-      t.track_path,
-      t.waveform_json_vault_path,
-      t.vault_background_video_path,
-    ].filter((p): p is string => Boolean(p?.trim()));
-    for (const p of paths) {
-      if (vaultObjectPathMatchesTrack(o, p)) return true;
-    }
-  }
-  return false;
-}
 
 export const dynamic = 'force-dynamic';
 
@@ -78,23 +55,12 @@ export async function GET(
   }
 
   const { userId } = await auth();
-  const supabase = createServiceCatalog();
+  if (!userId) {
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
 
-  if (userId) {
-    const catalogOk = await vaultPathAllowedForUser(
-      supabase,
-      userId,
-      objectPath,
-    );
-    const staticOk = dashboardStaticVaultAllows(objectPath);
-    if (!catalogOk && !staticOk) {
-      return new NextResponse('Forbidden', { status: 403 });
-    }
-  } else {
-    const allowed = await vaultPathAllowedForAnonymous(supabase, objectPath);
-    if (!allowed) {
-      return new NextResponse('Unauthorized', { status: 401 });
-    }
+  if (!(await vaultReadAllowedForUser(userId, objectPath))) {
+    return new NextResponse('Forbidden', { status: 403 });
   }
 
   let signedUrl: string;
