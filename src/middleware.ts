@@ -1,10 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
-import { isPlatformAdmin } from '@/lib/admin-access';
-
-const isAdminRoute = createRouteMatcher(['/admin(.*)']);
-
 const isProtectedRoute = createRouteMatcher([
   '/home(.*)',
   '/dashboard(.*)',
@@ -26,12 +22,9 @@ export default clerkMiddleware(async (auth, req) => {
     await auth.protect();
   }
 
-  if (isAdminRoute(req)) {
-    const { userId } = await auth();
-    if (!isPlatformAdmin(userId)) {
-      return NextResponse.redirect(new URL('/home', req.url));
-    }
-  }
+  // Admin allowlist is enforced in Server Components + server actions (`isPlatformAdmin`),
+  // not here: Edge middleware often does not receive non-NEXT_PUBLIC_ env vars (e.g. on
+  // Vercel), which would block every user from `/admin` even when `ADMIN_CLERK_USER_ID` is set.
 
   if (isAuthRoute(req)) {
     const { userId } = await auth();
