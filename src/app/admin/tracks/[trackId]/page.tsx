@@ -80,6 +80,7 @@ export default async function AdminTrackEditPage({ params }: PageProps) {
         genesisOriginals={genesisOriginalsForForm}
         initial={{
           visibility: track.visibility,
+          provenance_type: track.provenance_type ?? '',
           featured: Boolean(track.featured),
           anonymous_visible: Boolean(track.anonymous_visible),
           show_in_home_more_tracks: track.show_in_home_more_tracks !== false,

@@ -243,6 +243,12 @@ export function CreateTrackForm({ albums, genesisOriginals }: Props) {
               ),
             )}
           </select>
+          <p className="text-xs text-muted-foreground">
+            Stored as{' '}
+            <code className="text-[11px]">genesis</code>,{' '}
+            <code className="text-[11px]">hybrid</code>, or{' '}
+            <code className="text-[11px]">echo</code> — not uppercase labels.
+          </p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="mastering_provenance">Mastering provenance (optional)</Label>

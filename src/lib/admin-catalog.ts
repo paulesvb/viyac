@@ -132,6 +132,7 @@ export type AdminTrackPublishing = Pick<
   | 'slug'
   | 'title'
   | 'visibility'
+  | 'provenance_type'
   | 'featured'
   | 'anonymous_visible'
   | 'show_in_home_more_tracks'
@@ -188,7 +189,7 @@ export async function fetchTrackPublishingForAdmin(
   const { data, error } = await supabase
     .from('tracks')
     .select(
-      'id, slug, title, visibility, featured, anonymous_visible, show_in_home_more_tracks, owner_id, is_cover, original_track_id, updated_at, vault_background_video_path, thumbnail_path, lock_screen_art_path, lyrics, lyrics_by, instruments, is_instrumental',
+      'id, slug, title, visibility, provenance_type, featured, anonymous_visible, show_in_home_more_tracks, owner_id, is_cover, original_track_id, updated_at, vault_background_video_path, thumbnail_path, lock_screen_art_path, lyrics, lyrics_by, instruments, is_instrumental',
     )
     .eq('id', trackId)
     .maybeSingle();

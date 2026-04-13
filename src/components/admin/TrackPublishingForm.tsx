@@ -13,6 +13,7 @@ import type {
   GenesisOriginalOption,
 } from '@/lib/admin-catalog';
 import type { CatalogTrackRow } from '@/lib/catalog-types';
+import { PROVENANCE_META } from '@/lib/provenance';
 import { cn } from '@/lib/utils';
 
 const lyricsTextareaClass = cn(
@@ -40,6 +41,9 @@ export function TrackPublishingForm({
   const [message, setMessage] = useState<string | null>(null);
   const [visibility, setVisibility] =
     useState<CatalogTrackRow['visibility']>(initial.visibility);
+  const [provenanceType, setProvenanceType] = useState(
+    initial.provenance_type?.trim() ?? '',
+  );
   const [featured, setFeatured] = useState(initial.featured);
   const [anonymousVisible, setAnonymousVisible] = useState(
     initial.anonymous_visible,
@@ -94,6 +98,7 @@ export function TrackPublishingForm({
       startTransition(async () => {
         const result = await updateTrackPublishingFields(trackId, slug, {
           visibility,
+          provenance_type: provenanceType,
           featured,
           anonymous_visible: anonymousVisible,
           show_in_home_more_tracks: showInHomeMore,
@@ -121,6 +126,7 @@ export function TrackPublishingForm({
       trackId,
       slug,
       visibility,
+      provenanceType,
       featured,
       anonymousVisible,
       showInHomeMore,
@@ -159,6 +165,31 @@ export function TrackPublishingForm({
         <p className="text-xs text-muted-foreground">
           Controls who can see the track in the catalog. Anonymous playback
           still requires “Public preview” below plus public/unlisted rules.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="edit_provenance_type">Provenance (optional)</Label>
+        <select
+          id="edit_provenance_type"
+          value={provenanceType}
+          onChange={(e) => setProvenanceType(e.target.value)}
+          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="">— Unset —</option>
+          {(Object.keys(PROVENANCE_META) as Array<keyof typeof PROVENANCE_META>).map(
+            (k) => (
+              <option key={k} value={k}>
+                {PROVENANCE_META[k].label}
+              </option>
+            ),
+          )}
+        </select>
+        <p className="text-xs text-muted-foreground">
+          Stored as lowercase{' '}
+          <code className="text-[11px]">genesis</code>,{' '}
+          <code className="text-[11px]">hybrid</code>, or{' '}
+          <code className="text-[11px]">echo</code> (matches the database check).
         </p>
       </div>
 

@@ -155,6 +155,13 @@ export async function createCatalogTrack(
   const slug = await uniqueTrackSlugForOwner(userId, slugBase);
 
   const provenance = trimOrEmpty(input.provenance_type ?? '');
+  if (provenance && !isProvenanceType(provenance)) {
+    return {
+      ok: false,
+      error:
+        'Provenance must be unset or one of: genesis, hybrid, echo (use the dropdown).',
+    };
+  }
   const provenance_type =
     provenance && isProvenanceType(provenance) ? provenance : null;
 

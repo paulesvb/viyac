@@ -12,6 +12,7 @@ import { isCatalogAlbumId, isCatalogTrackId } from '@/lib/catalog-track-id';
 import type { CatalogTrackRow } from '@/lib/catalog-types';
 import { parseCommaSeparatedTags } from '@/lib/track-meta';
 import { resolveCoverOriginalForDb } from '@/lib/track-cover-original';
+import { isProvenanceType } from '@/lib/provenance';
 
 function trimOrEmpty(s: string | undefined): string {
   return s?.trim() ?? '';
@@ -24,6 +25,8 @@ function nullIfEmpty(s: string): string | null {
 
 export type TrackPublishingInput = {
   visibility: CatalogTrackRow['visibility'];
+  /** Empty → null in DB; otherwise `genesis` | `hybrid` | `echo`. */
+  provenance_type: string;
   featured: boolean;
   anonymous_visible: boolean;
   show_in_home_more_tracks: boolean;
@@ -90,10 +93,23 @@ export async function updateTrackPublishingFields(
 
   const instruments = parseCommaSeparatedTags(trimOrEmpty(input.instruments));
 
+  const provenanceRaw = trimOrEmpty(input.provenance_type);
+  if (provenanceRaw && !isProvenanceType(provenanceRaw)) {
+    return {
+      ok: false,
+      error:
+        'Provenance must be unset or one of: genesis, hybrid, echo (use the dropdown).',
+    };
+  }
+  const provenance_type = provenanceRaw && isProvenanceType(provenanceRaw)
+    ? provenanceRaw
+    : null;
+
   const { error: updateError } = await supabase
     .from('tracks')
     .update({
       visibility: input.visibility,
+      provenance_type,
       featured: input.featured,
       anonymous_visible: input.anonymous_visible,
       show_in_home_more_tracks: input.show_in_home_more_tracks,
