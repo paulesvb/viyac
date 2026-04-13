@@ -96,6 +96,7 @@ export default async function AdminTrackEditPage({ params }: PageProps) {
           instruments: normalizeTagList(track.instruments)
             .map(formatTagLabel)
             .join(', '),
+          is_instrumental: Boolean(track.is_instrumental),
         }}
       />
 

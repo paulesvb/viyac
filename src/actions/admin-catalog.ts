@@ -40,6 +40,7 @@ export type TrackPublishingInput = {
   album_id: string;
   /** Comma-separated instrument tags (same rules as create track). */
   instruments: string;
+  is_instrumental: boolean;
 };
 
 export async function updateTrackPublishingFields(
@@ -106,6 +107,7 @@ export async function updateTrackPublishingFields(
       lyrics: nullIfEmpty(trimOrEmpty(input.lyrics)),
       lyrics_by: nullIfEmpty(trimOrEmpty(input.lyrics_by)),
       instruments,
+      is_instrumental: Boolean(input.is_instrumental),
       updated_at: new Date().toISOString(),
     })
     .eq('id', trackId);

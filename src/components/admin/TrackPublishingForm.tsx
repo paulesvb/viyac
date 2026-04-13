@@ -67,6 +67,9 @@ export function TrackPublishingForm({
   >(initial.album_assignment);
   const [albumId, setAlbumId] = useState(initial.album_id?.trim() ?? '');
   const [instruments, setInstruments] = useState(initial.instruments ?? '');
+  const [isInstrumental, setIsInstrumental] = useState(
+    Boolean(initial.is_instrumental),
+  );
 
   const onSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -104,6 +107,7 @@ export function TrackPublishingForm({
           album_assignment: albumAssignment,
           album_id: albumId,
           instruments,
+          is_instrumental: isInstrumental,
         });
         if (result.ok) {
           setMessage('Saved.');
@@ -130,6 +134,7 @@ export function TrackPublishingForm({
       albumAssignment,
       albumId,
       instruments,
+      isInstrumental,
       genesisOriginals.length,
       router,
     ],
@@ -319,6 +324,19 @@ export function TrackPublishingForm({
           and appends it to the end of the new one (order is not preserved here).
         </p>
       </fieldset>
+
+      <div className="flex items-center gap-2">
+        <input
+          id="edit_is_instrumental"
+          type="checkbox"
+          checked={isInstrumental}
+          onChange={(e) => setIsInstrumental(e.target.checked)}
+          className="h-4 w-4 rounded border-input"
+        />
+        <Label htmlFor="edit_is_instrumental" className="font-normal">
+          Instrumental (no lead vocal)
+        </Label>
+      </div>
 
       <div className="space-y-2">
         <Label htmlFor="edit_instruments">Instruments (optional)</Label>
