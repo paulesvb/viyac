@@ -1,26 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
 import { useAuth, UserButton } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
-import { isPlatformAdmin } from '@/lib/admin-access';
 
 type NavbarProps = {
-  /** From server (`NavbarWrapper`); also see client fallback after mount. */
+  /** Set by `NavbarWrapper` from `ADMIN_CLERK_USER_ID` + Clerk `auth()` (server only). */
   showAdminLink?: boolean;
 };
 
 export function Navbar({ showAdminLink = false }: NavbarProps) {
-  const { isSignedIn, isLoaded, userId } = useAuth();
-  const [afterMount, setAfterMount] = useState(false);
-  useEffect(() => {
-    setAfterMount(true);
-  }, []);
-
-  const showAdminNav =
-    showAdminLink ||
-    (afterMount && Boolean(userId) && isPlatformAdmin(userId));
+  const { isSignedIn, isLoaded } = useAuth();
 
   return (
     <nav className="relative z-50 border-b bg-background">
@@ -46,7 +36,7 @@ export function Navbar({ showAdminLink = false }: NavbarProps) {
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/home">Home</Link>
               </Button>
-              {showAdminNav ? (
+              {showAdminLink ? (
                 <Button variant="ghost" size="sm" asChild>
                   <Link href="/admin/tracks">Admin</Link>
                 </Button>

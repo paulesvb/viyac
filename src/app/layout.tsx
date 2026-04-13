@@ -6,6 +6,9 @@ import "./globals.css";
 import { NavbarWrapper } from "@/components/NavbarWrapper";
 import { getSiteUrl } from "@/lib/site-url";
 
+/** Clerk session + `ADMIN_CLERK_USER_ID` must run per request so the Admin link is correct. */
+export const dynamic = "force-dynamic";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
