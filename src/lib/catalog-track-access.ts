@@ -1,0 +1,371 @@
+import { isPlatformAdmin } from '@/lib/admin-access';
+import type { createServiceCatalog } from '@/lib/supabase-catalog';
+import type { CatalogTrackRow } from '@/lib/catalog-types';
+import { catalogTrackHasViewerGrant } from '@/lib/track-viewer-grants';
+
+type CatalogServiceClient = ReturnType<typeof createServiceCatalog>;
+
+/**
+ * Returns the track row if `userId` may access it for playback/catalog (matches tracks RLS idea).
+ * Pass `createServiceCatalog()` (service role, `api` schema).
+ */
+export async function getCatalogTrackIfAccessible(
+  supabase: CatalogServiceClient,
+  userId: string,
+  trackId: string,
+): Promise<CatalogTrackRow | null> {
+  const { data: track, error: trackError } = await supabase
+    .from('tracks')
+    .select('*')
+    .eq('id', trackId)
+    .maybeSingle();
+
+  if (trackError || !track) return null;
+
+  const row = track as CatalogTrackRow;
+  if (row.owner_id === userId) return row;
+  if (isPlatformAdmin(userId)) return row;
+  if (await catalogTrackHasViewerGrant(supabase, trackId, userId)) return row;
+  if (row.visibility === 'public' || row.visibility === 'unlisted') return row;
+
+  const { data: viaAlbum } = await supabase
+    .from('album_tracks')
+    .select('album_id')
+    .eq('track_id', trackId)
+    .limit(50);
+
+  const albumIds = (viaAlbum ?? []).map((r) => r.album_id as string);
+  if (albumIds.length === 0) return null;
+
+  const { data: albums } = await supabase
+    .from('albums')
+    .select('id,visibility')
+    .in('id', albumIds);
+
+  const anyPublic = (albums ?? []).some(
+    (a) => a.visibility === 'public' || a.visibility === 'unlisted',
+  );
+  return anyPublic ? row : null;
+}
+
+/**
+ * Vault proxy requests include the manifest path and segment paths under the same folder.
+ * Also treats files in the same parent directory as related (waveform / bg video / HLS siblings).
+ */
+export function vaultObjectPathMatchesTrack(
+  objectPath: string,
+  trackPath: string,
+): boolean {
+  const norm = (s: string) => s.trim().replace(/^\/+/, '');
+  const o = norm(objectPath);
+  const c = norm(trackPath);
+  if (!o || !c) return false;
+  if (o === c) return true;
+
+  const parentPrefix = (p: string): string | null => {
+    const i = p.lastIndexOf('/');
+    if (i < 0) return null;
+    return p.slice(0, i + 1);
+  };
+
+  const po = parentPrefix(o);
+  const pc = parentPrefix(c);
+  if (po !== null && pc !== null && po === pc) return true;
+  if (pc !== null && o.startsWith(pc)) return true;
+  if (po !== null && c.startsWith(po)) return true;
+  return false;
+}
+
+/**
+ * Signed-out playback: track must opt in and be otherwise world-readable (direct or via public/unlisted album).
+ */
+export async function getCatalogTrackIfAnonymousAccessible(
+  supabase: CatalogServiceClient,
+  trackId: string,
+): Promise<CatalogTrackRow | null> {
+  const { data: track, error: trackError } = await supabase
+    .from('tracks')
+    .select('*')
+    .eq('id', trackId)
+    .maybeSingle();
+
+  if (trackError || !track) return null;
+
+  const row = track as CatalogTrackRow;
+  if (row.anonymous_visible !== true && row.show_home !== true) return null;
+
+  if (row.visibility === 'public' || row.visibility === 'unlisted') return row;
+
+  const { data: viaAlbum } = await supabase
+    .from('album_tracks')
+    .select('album_id')
+    .eq('track_id', trackId)
+    .limit(50);
+
+  const albumIds = (viaAlbum ?? []).map((r) => r.album_id as string);
+  if (albumIds.length === 0) return null;
+
+  const { data: albums } = await supabase
+    .from('albums')
+    .select('id,visibility')
+    .in('id', albumIds);
+
+  const anyPublic = (albums ?? []).some(
+    (a) => a.visibility === 'public' || a.visibility === 'unlisted',
+  );
+  return anyPublic ? row : null;
+}
+
+/**
+ * Catalog tracks that signed-out users may see on the public landing page / stream via vault.
+ * Same rules as {@link getCatalogTrackIfAnonymousAccessible} per row, batched for listing.
+ */
+export async function listAnonymousAccessibleCatalogTrackRows(
+  supabase: CatalogServiceClient,
+): Promise<CatalogTrackRow[]> {
+  const { data: rows, error } = await supabase
+    .from('tracks')
+    .select('*')
+    .eq('anonymous_visible', true);
+
+  if (error) {
+    console.error('[listAnonymousAccessibleCatalogTrackRows]', error);
+    return [];
+  }
+  const list = (rows ?? []) as CatalogTrackRow[];
+  if (list.length === 0) return [];
+
+  const trackIds = list.map((r) => r.id);
+  const { trackToAlbums, publicAlbumIds } = await loadTrackAlbumVisibilityContext(
+    supabase,
+    trackIds,
+  );
+
+  const allowed = list.filter((row) =>
+    isTrackAnonymousStreamable(row, trackToAlbums, publicAlbumIds),
+  );
+
+  return allowed.sort((a, b) => {
+    if (a.featured !== b.featured) return a.featured ? -1 : 1;
+    if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
+    return a.title.localeCompare(b.title);
+  });
+}
+
+function vaultBundleContainsPath(
+  objectPath: string,
+  row: CatalogTrackRow,
+): boolean {
+  const paths = [
+    row.track_path,
+    row.waveform_json_vault_path,
+    row.vault_background_video_path,
+  ].filter((p): p is string => Boolean(p?.trim()));
+  for (const p of paths) {
+    if (vaultObjectPathMatchesTrack(objectPath, p)) return true;
+  }
+  return false;
+}
+
+function trackIsWorldReadableForAnonymous(
+  row: CatalogTrackRow,
+  trackToAlbums: Map<string, string[]>,
+  publicAlbumIds: Set<string>,
+): boolean {
+  if (row.visibility === 'public' || row.visibility === 'unlisted') return true;
+  const aids = trackToAlbums.get(row.id) ?? [];
+  return aids.some((id) => publicAlbumIds.has(id));
+}
+
+async function loadTrackAlbumVisibilityContext(
+  supabase: CatalogServiceClient,
+  trackIds: string[],
+): Promise<{
+  trackToAlbums: Map<string, string[]>;
+  publicAlbumIds: Set<string>;
+}> {
+  const trackToAlbums = new Map<string, string[]>();
+  const publicAlbumIds = new Set<string>();
+  if (trackIds.length === 0) {
+    return { trackToAlbums, publicAlbumIds };
+  }
+
+  const { data: atRows, error: atError } = await supabase
+    .from('album_tracks')
+    .select('track_id, album_id')
+    .in('track_id', trackIds);
+
+  if (atError) {
+    console.error('[loadTrackAlbumVisibilityContext] album_tracks', atError);
+    return { trackToAlbums, publicAlbumIds };
+  }
+
+  const albumIds = [
+    ...new Set((atRows ?? []).map((x) => x.album_id as string)),
+  ];
+
+  const { data: albums, error: albumsError } =
+    albumIds.length > 0
+      ? await supabase.from('albums').select('id,visibility').in('id', albumIds)
+      : { data: [], error: null };
+
+  if (albumsError) {
+    console.error('[loadTrackAlbumVisibilityContext] albums', albumsError);
+    return { trackToAlbums, publicAlbumIds };
+  }
+
+  for (const a of albums ?? []) {
+    if (a.visibility === 'public' || a.visibility === 'unlisted') {
+      publicAlbumIds.add(a.id as string);
+    }
+  }
+
+  for (const r of atRows ?? []) {
+    const tid = r.track_id as string;
+    const list = trackToAlbums.get(tid) ?? [];
+    list.push(r.album_id as string);
+    trackToAlbums.set(tid, list);
+  }
+
+  return { trackToAlbums, publicAlbumIds };
+}
+
+function isTrackAnonymousStreamable(
+  row: CatalogTrackRow,
+  trackToAlbums: Map<string, string[]>,
+  publicAlbumIds: Set<string>,
+): boolean {
+  if (!trackIsWorldReadableForAnonymous(row, trackToAlbums, publicAlbumIds)) {
+    return false;
+  }
+  if (row.anonymous_visible === true) return true;
+  if (row.show_home === true) return true;
+  return false;
+}
+
+/**
+ * True if `objectPath` is part of an anonymously streamable track’s vault assets (HLS, waveform, bg video).
+ * Prefix queries (same strategy as signed-in vault checks) so HLS segment paths resolve reliably.
+ */
+export async function vaultPathAllowedForAnonymous(
+  supabase: CatalogServiceClient,
+  objectPath: string,
+): Promise<boolean> {
+  const norm = objectPath.trim().replace(/^\/+/, '');
+  if (!norm) return false;
+
+  const parts = norm.split('/').filter(Boolean);
+  if (parts.length === 0) return false;
+
+  const seen = new Set<string>();
+  const candidateRows: CatalogTrackRow[] = [];
+
+  for (let d = parts.length; d >= 1; d--) {
+    const prefix = parts.slice(0, d).join('/');
+    const pattern = `${prefix}%`;
+
+    const [byTrackPath, byWaveform, byBg] = await Promise.all([
+      supabase.from('tracks').select('*').ilike('track_path', pattern),
+      supabase
+        .from('tracks')
+        .select('*')
+        .ilike('waveform_json_vault_path', pattern),
+      supabase
+        .from('tracks')
+        .select('*')
+        .ilike('vault_background_video_path', pattern),
+    ]);
+
+    for (const res of [byTrackPath, byWaveform, byBg]) {
+      if (res.error) {
+        console.error('[vaultPathAllowedForAnonymous]', res.error);
+      }
+    }
+
+    const merged = [
+      ...((byTrackPath.data ?? []) as CatalogTrackRow[]),
+      ...((byWaveform.data ?? []) as CatalogTrackRow[]),
+      ...((byBg.data ?? []) as CatalogTrackRow[]),
+    ];
+
+    for (const row of merged) {
+      if (seen.has(row.id)) continue;
+      if (!vaultBundleContainsPath(norm, row)) continue;
+      seen.add(row.id);
+      candidateRows.push(row);
+    }
+  }
+
+  if (candidateRows.length === 0) return false;
+
+  const { trackToAlbums, publicAlbumIds } = await loadTrackAlbumVisibilityContext(
+    supabase,
+    candidateRows.map((r) => r.id),
+  );
+
+  return candidateRows.some((row) =>
+    isTrackAnonymousStreamable(row, trackToAlbums, publicAlbumIds),
+  );
+}
+
+/**
+ * Signed-in vault access: object path must belong to a catalog track this user may access
+ * (same rules as {@link getCatalogTrackIfAccessible}). Uses prefix queries so we do not scan
+ * the full catalog on every HLS segment.
+ */
+export async function vaultPathAllowedForUser(
+  supabase: CatalogServiceClient,
+  userId: string,
+  objectPath: string,
+): Promise<boolean> {
+  const norm = objectPath.trim().replace(/^\/+/, '');
+  if (!norm) return false;
+
+  const parts = norm.split('/').filter(Boolean);
+  if (parts.length === 0) return false;
+
+  const seen = new Set<string>();
+
+  for (let d = parts.length; d >= 1; d--) {
+    const prefix = parts.slice(0, d).join('/');
+    const pattern = `${prefix}%`;
+
+    const [byTrackPath, byWaveform, byBg] = await Promise.all([
+      supabase.from('tracks').select('*').ilike('track_path', pattern),
+      supabase
+        .from('tracks')
+        .select('*')
+        .ilike('waveform_json_vault_path', pattern),
+      supabase
+        .from('tracks')
+        .select('*')
+        .ilike('vault_background_video_path', pattern),
+    ]);
+
+    for (const res of [byTrackPath, byWaveform, byBg]) {
+      if (res.error) {
+        console.error('[vaultPathAllowedForUser]', res.error);
+      }
+    }
+
+    const merged = [
+      ...((byTrackPath.data ?? []) as CatalogTrackRow[]),
+      ...((byWaveform.data ?? []) as CatalogTrackRow[]),
+      ...((byBg.data ?? []) as CatalogTrackRow[]),
+    ];
+
+    for (const row of merged) {
+      if (seen.has(row.id)) continue;
+      if (!vaultBundleContainsPath(norm, row)) continue;
+      seen.add(row.id);
+      const allowed = await getCatalogTrackIfAccessible(
+        supabase,
+        userId,
+        row.id,
+      );
+      if (allowed) return true;
+    }
+  }
+
+  return false;
+}

@@ -1,0 +1,422 @@
+{
+  "welcome": {
+    "en": "Welcome",
+    "es": "Bienvenido"
+  },
+  "seoHomeTitle": {
+    "en": "VIYAC | Hybrid Rock & Engineering",
+    "es": "VIYAC | Rock Híbrido e Ingeniería"
+  },
+  "seoHomeDescription": {
+    "en": "Explore the official catalog of VIYAC. A hybrid musical archive built on timeless electric guitars, AI-designed vocals, and precise high-frequency engineering.",
+    "es": "Explora el catálogo oficial de VIYAC. Un archivo musical híbrido construido sobre guitarras eléctricas atemporales, voces de IA e ingeniería de alta frecuencia."
+  },
+  "legalDisclaimer": {
+    "en": "Legal disclaimer",
+    "es": "Aviso legal"
+  },
+  "legalSection1Title": {
+    "en": "Creative Attribution & Rights",
+    "es": "Derechos y Atribución Creativa"
+  },
+  "legalSection2Title": {
+    "en": "\"Inner Circle\" Access & Privacy",
+    "es": "Acceso al \"Inner Circle\" y Privacidad"
+  },
+  "legalSection3Title": {
+    "en": "Limitation of Liability",
+    "es": "Limitación de Responsabilidad"
+  },
+  "legalSection4Title": {
+    "en": "Governing Law and Jurisdiction",
+    "es": "Ley Aplicable y Jurisdicción"
+  },
+  "legalSection5Title": {
+    "en": "Legal Contact",
+    "es": "Contacto Legal"
+  },
+  "legalLastUpdated": {
+    "en": "Last updated: June 2026",
+    "es": "Última actualización: Junio 2026"
+  },
+  "aboutPageTitle": {
+    "en": "About",
+    "es": "Acerca de"
+  },
+  "aboutTagline": {
+    "en": "The future is hybrid. The soul is human.",
+    "es": "El futuro es híbrido. El alma es humana."
+  },
+  "aboutPhilosophyHeading": {
+    "en": "My philosophy",
+    "es": "Mi filosofía"
+  },
+  "aboutEcosystemHeading": {
+    "en": "The VIYAC ecosystem: explore & collaborate",
+    "es": "El ecosistema VIYAC: explora y colabora"
+  },
+  "aboutExploreVault": {
+    "en": "Explore the Viyac Vault",
+    "es": "Explora el Viyac Vault"
+  },
+  "aboutContact": {
+    "en": "Contact",
+    "es": "Contacto"
+  },
+  "comingSoon": {
+    "en": "Coming soon",
+    "es": "Proximamente"
+  },
+  "authEyebrow": {
+    "en": "VIYAC Vault",
+    "es": "VIYAC Vault"
+  },
+  "authSignInPageTitle": {
+    "en": "Access Granted",
+    "es": "Acceso Exclusivo"
+  },
+  "authSignInPageDescription": {
+    "en": "Sign in to the Inner Circle for the full archive — tracks, instrumentals, and collaboration blueprints.",
+    "es": "Inicia sesión en el Inner Circle para acceder al archivo completo — temas, instrumentales y blueprints."
+  },
+  "authSignInLoading": {
+    "en": "Loading sign-in…",
+    "es": "Cargando inicio de sesión…"
+  },
+  "authSignUpPageTitle": {
+    "en": "Glad you're here",
+    "es": "Qué bueno que estés aquí"
+  },
+  "authSignUpPageDescription": {
+    "en": "Create your account to unlock the full listening experience — collections, favorites, and hybrid soul on your terms.",
+    "es": "Crea tu cuenta para desbloquear la experiencia completa — colecciones, favoritos e híbrid soul a tu manera."
+  },
+  "authSignUpLoading": {
+    "en": "Loading sign-up…",
+    "es": "Cargando registro…"
+  },
+  "clerkSignInTitle": {
+    "en": "Access Granted",
+    "es": "Acceso Concedido"
+  },
+  "clerkSignInSubtitle": {
+    "en": "Create your free access pass to unlock the complete archive of VIYAC tracks, AI-designed vocals, and collaboration files. No commitment required.",
+    "es": "Crea tu pase de acceso gratuito para desbloquear el archivo completo de temas de VIYAC, voces de IA y archivos de colaboración. Sin compromisos."
+  },
+  "clerkSignInActionText": {
+    "en": "Don't have an account?",
+    "es": "¿No tienes una cuenta?"
+  },
+  "clerkSignInActionLink": {
+    "en": "Sign up here",
+    "es": "Regístrate aquí"
+  },
+  "clerkSignUpTitle": {
+    "en": "Join the Inner Circle",
+    "es": "Ingresa al Inner Circle"
+  },
+  "clerkSignUpSubtitle": {
+    "en": "Registration is entirely complimentary. Get instant access to the full catalog.",
+    "es": "El registro es completamente gratuito. Obtén acceso instantáneo al catálogo completo."
+  },
+  "clerkSignUpActionText": {
+    "en": "Already have an account?",
+    "es": "¿Ya tienes una cuenta?"
+  },
+  "clerkSignUpActionLink": {
+    "en": "Sign in",
+    "es": "Inicia sesión"
+  },
+  "clerkSignUpEmailCodeSubtitle": {
+    "en": "We sent a code to verify it's really you — welcome to the vault.",
+    "es": "Te enviamos un código para confirmar que eres tú — bienvenido al vault."
+  },
+  "navHome": {
+    "en": "Home",
+    "es": "Inicio"
+  },
+  "navHomeBack": {
+    "en": "← Home",
+    "es": "← Inicio"
+  },
+  "navSignIn": {
+    "en": "Sign in",
+    "es": "Iniciar sesión"
+  },
+  "navSignUp": {
+    "en": "Sign up",
+    "es": "Registrarse"
+  },
+  "navFavorites": {
+    "en": "Favorites",
+    "es": "Favoritos"
+  },
+  "navShared": {
+    "en": "Shared",
+    "es": "Compartidos"
+  },
+  "navAdmin": {
+    "en": "Admin",
+    "es": "Admin"
+  },
+  "navCollections": {
+    "en": "Collections",
+    "es": "Colecciones"
+  },
+  "navBehindViyac": {
+    "en": "Behind VIYAC",
+    "es": "Detrás de VIYAC"
+  },
+  "navAbout": {
+    "en": "About",
+    "es": "Acerca de"
+  },
+  "navLegal": {
+    "en": "Legal",
+    "es": "Legal"
+  },
+  "footerCopyright": {
+    "en": "All rights reserved.",
+    "es": "Todos los derechos reservados."
+  },
+  "ctaBrowseCollectionsSignIn": {
+    "en": "Browse collections — sign in to listen.",
+    "es": "Explora colecciones — inicia sesión para escuchar."
+  },
+  "ctaDismissPermanently": {
+    "en": "Got it",
+    "es": "Entendido"
+  },
+  "ctaAccessFullCatalog": {
+    "en": "Access Full Catalog",
+    "es": "Acceder al Catálogo Completo"
+  },
+  "ctaSaving": {
+    "en": "Saving…",
+    "es": "Guardando…"
+  },
+  "ctaFavorite": {
+    "en": "Favorite",
+    "es": "Favorito"
+  },
+  "ctaFavorited": {
+    "en": "Favorited",
+    "es": "En favoritos"
+  },
+  "ctaAddFavorite": {
+    "en": "Add to favorites",
+    "es": "Añadir a favoritos"
+  },
+  "ctaRemoveFavorite": {
+    "en": "Remove from favorites",
+    "es": "Quitar de favoritos"
+  },
+  "ctaHide": {
+    "en": "Hide",
+    "es": "Ocultar"
+  },
+  "ctaPlay": {
+    "en": "Play",
+    "es": "Reproducir"
+  },
+  "ctaPlayNow": {
+    "en": "Listen Now",
+    "es": "Escucha Ahora"
+  },
+  "ctaPause": {
+    "en": "Pause",
+    "es": "Pausar"
+  },
+  "ctaStop": {
+    "en": "Stop",
+    "es": "Detener"
+  },
+  "ctaPrevious": {
+    "en": "Previous",
+    "es": "Anterior"
+  },
+  "ctaNext": {
+    "en": "Next",
+    "es": "Siguiente"
+  },
+  "ctaLoop": {
+    "en": "Loop",
+    "es": "Bucle"
+  },
+  "ctaRepeat": {
+    "en": "Repeat",
+    "es": "Repetir"
+  },
+  "ctaShowLyrics": {
+    "en": "Show lyrics",
+    "es": "Mostrar letra"
+  },
+  "ctaHideLyrics": {
+    "en": "Hide lyrics",
+    "es": "Ocultar letra"
+  },
+  "ctaAriaPauseTrack": {
+    "en": "Pause {title}",
+    "es": "Pausar {title}"
+  },
+  "ctaAriaPlayTrackFeatured": {
+    "en": "Play {title} in the featured player",
+    "es": "Reproducir {title} en el reproductor destacado"
+  },
+  "badgeFeatured": {
+    "en": "Featured",
+    "es": "Destacado"
+  },
+  "badgeNowPlaying": {
+    "en": "Now playing",
+    "es": "Reproduciendo"
+  },
+  "badgeFromCollection": {
+    "en": "From this collection",
+    "es": "De esta colección"
+  },
+  "badgeSingle": {
+    "en": "Single",
+    "es": "Sencillo"
+  },
+  "badgeInstrumental": {
+    "en": "Instrumental",
+    "es": "Instrumental"
+  },
+  "badgeArt": {
+    "en": "Art",
+    "es": "Arte"
+  },
+  "badgeGenesis": {
+    "en": "GENESIS",
+    "es": "GENESIS"
+  },
+  "badgeHybrid": {
+    "en": "HYBRID",
+    "es": "HYBRID"
+  },
+  "badgeEcho": {
+    "en": "ECHO",
+    "es": "ECHO"
+  },
+  "badgeGenesisTooltip": {
+    "en": "Genesis: pure human master — Logic Pro & Fender Quantum; no synthetic arrangement.",
+    "es": "Genesis: obra humana pura — Logic Pro y Fender Quantum; sin arreglos sintéticos."
+  },
+  "badgeHybridTooltip": {
+    "en": "Hybrid: human-led — AI arrangements or Gemini-assisted lyrics with your performance.",
+    "es": "Hybrid: liderado por el humano — arreglos con IA o letras asistidas por Gemini con tu interpretación."
+  },
+  "badgeEchoTooltip": {
+    "en": "Echo: AI-generated live version or cover derived from your originals.",
+    "es": "Echo: versión en vivo o cover generado por IA a partir de tus originales."
+  },
+  "badgeStudioMastered": {
+    "en": "Studio mastered",
+    "es": "Masterizado en estudio"
+  },
+  "badgeAiMastered": {
+    "en": "AI mastered",
+    "es": "Masterizado con IA"
+  },
+  "collectionBadgeNewGenesisInnerCircle": {
+    "en": "New · Genesis · Inner Circle",
+    "es": "Nuevo · Genesis · Inner Circle"
+  },
+  "sectionMoreFeaturedTracks": {
+    "en": "More featured tracks",
+    "es": "Más temas destacados"
+  },
+  "sectionMoreTracks": {
+    "en": "More tracks",
+    "es": "Más temas"
+  },
+  "labelTrackSingular": {
+    "en": "track",
+    "es": "tema"
+  },
+  "labelTrackPlural": {
+    "en": "tracks",
+    "es": "temas"
+  },
+  "labelCollectionCover": {
+    "en": "Collection cover",
+    "es": "Portada de la colección"
+  },
+  "labelCollection": {
+    "en": "Collection",
+    "es": "Colección"
+  },
+  "albumEmptyTracks": {
+    "en": "No accessible tracks found in this collection yet.",
+    "es": "Aún no hay temas accesibles en esta colección."
+  },
+  "labelInstruments": {
+    "en": "Instruments",
+    "es": "Instrumentos"
+  },
+  "introWelcome": {
+    "en": "Access Granted. Welcome to VIYAC",
+    "es": "Acceso concedido. Bienvenido a VIYAC"
+  },
+  "introPathsLead": {
+    "en": "Three evolutionary paths shape this sonic blueprint:",
+    "es": "Tres caminos evolutivos dan forma a este plano sonoro:"
+  },
+  "introGenesisDesc": {
+    "en": "Core blueprints. Original tracks, pure lyrics, and foundational arrangements.",
+    "es": "Planos centrales. Temas originales, letras puras e instrumentación base."
+  },
+  "introHybridDesc": {
+    "en": "Synthesized synergy. Traditional instrumentation amplified by cutting-edge engineering.",
+    "es": "Sinergia sintetizada. Instrumentación tradicional amplificada por ingeniería de vanguardia."
+  },
+  "introEchoDesc": {
+    "en": "Sonic reflections. Reinterpretations that explore the subjective nature of existing themes.",
+    "es": "Reflejos sonoros. Reinterpretaciones que exploran la naturaleza subjetiva de temas existentes."
+  },
+  "introAnonymousTitle": {
+    "en": "THE SONIC BLUEPRINT",
+    "es": "EL PLANO SÓNICO"
+  },
+  "introAnonymousBody": {
+    "en": "Welcome. The official catalog of VIYAC comes to life here, built on timeless electric guitars, AI-designed vocals, and high-frequency engineering. Listen to the featured tracks right now, or create an account to instantly access all collections.",
+    "es": "Bienvenido. El catálogo oficial de VIYAC cobra vida aquí, construido sobre guitarras eléctricas atemporales, voces diseñadas con inteligencia artificial e ingeniería de alta frecuencia. Escucha los temas destacados ahora mismo o crea una cuenta para acceder al instante a todas las colecciones."
+  },
+  "pageFavoritesTitle": {
+    "en": "Favorites",
+    "es": "Favoritos"
+  },
+  "pageFavoritesEmptyPrefix": {
+    "en": "No favorites yet. Use",
+    "es": "Aún no tienes favoritos. Usa"
+  },
+  "pageFavoritesEmptySuffix": {
+    "en": "on a track player to add one.",
+    "es": "en el reproductor de un tema para añadir uno."
+  },
+  "pageSharedTitle": {
+    "en": "Shared Tracks",
+    "es": "Temas compartidos"
+  },
+  "pageSharedDescription": {
+    "en": "Tracks shared directly with you.",
+    "es": "Temas compartidos directamente contigo."
+  },
+  "pageSharedEmpty": {
+    "en": "No tracks have been shared with you yet.",
+    "es": "Aún no se han compartido temas contigo."
+  },
+  "pageSharedAlsoShared": {
+    "en": "Also shared with",
+    "es": "También compartido con"
+  },
+  "pageSharedOtherSingular": {
+    "en": "other",
+    "es": "otra persona"
+  },
+  "pageSharedOtherPlural": {
+    "en": "others",
+    "es": "otras personas"
+  }
+}

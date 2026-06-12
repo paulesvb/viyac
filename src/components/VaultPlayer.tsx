@@ -1,0 +1,1643 @@
+'use client';
+
+import Hls from 'hls.js';
+import { Pause, Play } from 'lucide-react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import WaveSurfer from 'wavesurfer.js';
+
+import {
+  downsamplePeaksForDisplay,
+  parseWaveformJson,
+  type ParsedWaveform,
+} from '@/lib/waveform-json';
+import { LyricsDisplay } from '@/components/LyricsDisplay';
+import { ProvenanceBadge } from '@/components/ProvenanceBadge';
+import { VaultPlayerFavoriteButton } from '@/components/VaultPlayerFavoriteButton';
+import { VaultPlayerSpinningDisc } from '@/components/VaultPlayerSpinningDisc';
+import {
+  buildCompactTrackMetaLine,
+} from '@/lib/track-meta';
+import { resolvePublicAssetsUrl } from '@/lib/storage';
+import { vaultStreamUrl } from '@/lib/vault-stream';
+import { useCatalogListenHeartbeat } from '@/hooks/use-catalog-listen-heartbeat';
+import { useTranslate } from '@/hooks/use-translate';
+
+export type VaultTrackData = {
+  /** Fallback still when no vault background video */
+  bg_image_url: string;
+  content_type: 'video' | 'audio';
+  /** Vault bucket path to HLS entry (e.g. `folder/index.m3u8`) — streamed via `/api/vault/stream/...` */
+  track_path: string;
+  thumbnail_url?: string;
+  title?: string;
+  description_en?: string;
+  description_es?: string;
+  /** Public `assets` key or full URL to `waveform.json` */
+  waveform_json_path?: string;
+  waveform_json_url?: string;
+  /** Vault object key for `waveform.json` — signed URL fetched at runtime (takes precedence over public paths). */
+  waveform_json_vault_path?: string;
+  /** Vault object key for looping background MP4 (4K); signed URL + top hero video. HLS attaches to `<audio>`. */
+  vault_background_video_path?: string;
+  /**
+   * Square-ish cover for lock screen / Control Center / CarPlay (HTTPS or same-origin).
+   * Not derived from `bg_image_url` — that image is often a blurred stock backdrop (e.g. Picsum).
+   */
+  lock_screen_art_url?: string;
+  /** When set, listen time is reported for catalog rating eligibility (UUID from `api.tracks`). */
+  catalog_track_id?: string;
+  /** Optional catalog provenance marker shown under player metadata. */
+  provenance_type?: 'genesis' | 'hybrid' | 'echo';
+  /** Optional `api.tracks.mastering_provenance` label. */
+  mastering_provenance?: 'STUDIO MASTERED' | 'AI MASTERED';
+  genres?: string[];
+  is_instrumental?: boolean;
+  /** Catalog: not linked to any album (standalone single). */
+  is_single?: boolean;
+  /** Containing album title when `is_single === false` (player second line vs descriptions). */
+  album_title?: string;
+  /** When true with `catalog_track_id`, signed-out listen heartbeats are recorded. */
+  anonymous_visible?: boolean;
+  /** ISO `YYYY-MM-DD` (use 1st of month for month/year). */
+  release_date?: string;
+  duration_ms?: number;
+  /** Plain-text lyrics (`[SECTION]` on own lines); shown below descriptions in the player. */
+  lyrics?: string;
+  /** Optional lyrics writer credit (shown with lyrics). */
+  lyrics_by?: string;
+};
+
+type VaultPlayerProps = {
+  trackData: VaultTrackData;
+  variant?: 'fullscreen' | 'embedded';
+  /**
+   * `inline` — lyrics render under meta when the track has lyrics and is not instrumental.
+   * `collapsible` — home featured card only: CTA toggles lyrics (saves vertical space).
+   */
+  lyricsPresentation?: 'inline' | 'collapsible';
+  /**
+   * Increment when the user explicitly chose this track to play (e.g. home list Play).
+   * Playback starts once the stream is ready (`loadedmetadata`).
+   */
+  autoPlayNonce?: number;
+  /** Fired when the main HLS media element reaches natural end (e.g. album “play next”). */
+  onPlaybackEnded?: () => void;
+  /**
+   * When set, queue advance runs synchronously on `ended` (required for lock-screen /
+   * background playback — React state updates are deferred while the tab is hidden).
+   */
+  resolveNextTrack?: () => VaultTrackData | null;
+  resolvePreviousTrack?: () => VaultTrackData | null;
+  /** Sync parent UI after an imperative queue advance inside the player. */
+  onTrackAdvanced?: (track: VaultTrackData) => void;
+  /** Parent control command; run once when nonce increments. */
+  playbackControlAction?: 'toggle' | 'stop';
+  playbackControlNonce?: number;
+  /** Notifies parent pages so shared controls can render Play/Pause state. */
+  onPlayingChange?: (playing: boolean) => void;
+  /**
+   * Audio-only layout: show the saved vinyl disc hero (`VaultPlayerSpinningDisc`).
+   * Default off for a compact waveform-first player.
+   */
+  showSpinningDisc?: boolean;
+};
+
+type WaveformLoadState = ParsedWaveform | null | 'loading' | 'error';
+
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function WaveformTimecode({
+  currentTime,
+  duration,
+}: {
+  currentTime: number;
+  duration: number;
+}) {
+  return (
+    <div className="text-sm tabular-nums text-zinc-300">
+      <span>{formatTime(currentTime)}</span>
+      <span className="mx-1 text-[#7b2eff]/50">/</span>
+      <span>{formatTime(duration)}</span>
+    </div>
+  );
+}
+
+function isParsedWaveform(w: WaveformLoadState): w is ParsedWaveform {
+  return w !== null && w !== 'loading' && w !== 'error';
+}
+
+function resolveAbsoluteMediaUrl(href: string): string {
+  try {
+    return new URL(href.trim(), window.location.href).href;
+  } catch {
+    return href.trim();
+  }
+}
+
+/** Helps iOS/Safari pick up new artwork when the storage path or public URL changes. */
+function withLockScreenArtCacheBust(url: string): string {
+  try {
+    const u = new URL(url);
+    const key = u.pathname.replace(/[^\w-]+/g, '').slice(-48) || 'art';
+    if (!u.searchParams.has('v')) {
+      u.searchParams.set('v', key);
+    }
+    return u.href;
+  } catch {
+    return url;
+  }
+}
+
+/** Inlined at build time; change requires redeploy on Vercel etc. */
+const MEDIA_SESSION_ART_ENV =
+  typeof process.env.NEXT_PUBLIC_MEDIA_SESSION_ART_URL === 'string'
+    ? process.env.NEXT_PUBLIC_MEDIA_SESSION_ART_URL.trim()
+    : '';
+
+function lockScreenArtForTrack(track: VaultTrackData): string | null {
+  const raw =
+    track.lock_screen_art_url?.trim() ||
+    track.thumbnail_url?.trim() ||
+    MEDIA_SESSION_ART_ENV ||
+    '';
+  if (!raw) return null;
+  const absolute =
+    typeof window === 'undefined' ? raw : resolveAbsoluteMediaUrl(raw);
+  return withLockScreenArtCacheBust(absolute);
+}
+
+function applyLockScreenMetadata(track: VaultTrackData) {
+  if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+  const title = track.title?.trim() || 'Track';
+  const artworkHref = lockScreenArtForTrack(track);
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title,
+      artist: '',
+      artwork: artworkHref
+        ? [
+            { src: artworkHref, sizes: '512x512' },
+            { src: artworkHref, sizes: '256x256' },
+          ]
+        : [],
+    });
+  } catch {
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({ title, artist: '' });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * Safari often falls back to the largest on-page `<img>` for lock-screen art when
+ * `MediaMetadata` artwork is missing or fails to load. Default dashboard bg uses
+ * Lorem Picsum — that URL must not be a real `<img src>` or iOS shows it as “album art”.
+ */
+function isStockPhotoBackdropUrl(url: string): boolean {
+  return /picsum\.photos/i.test(url);
+}
+
+function buildPlaceholderPeaks(length: number): Float32Array {
+  const out = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    const t = i / Math.max(1, length - 1);
+    const w =
+      Math.sin(t * Math.PI * 14) * 0.22 +
+      Math.sin(t * Math.PI * 27) * 0.14 +
+      Math.sin(t * Math.PI * 5) * 0.18;
+    const envelope = Math.sin(t * Math.PI) * 0.85 + 0.15;
+    out[i] = Math.min(1, Math.max(0.06, Math.abs(w) * envelope));
+  }
+  return out;
+}
+
+const WAVEFORM_DISPLAY_BINS = 2048;
+
+/** Neon Cyan → Violet (Vault) */
+const VAULT_WAVESURFER = {
+  height: 104,
+  waveColor: ['#00f2ff', '#7b2eff'] as [string, string],
+  progressColor: 'rgba(123, 46, 255, 0.88)',
+  cursorColor: '#e0e7ff',
+  cursorWidth: 2,
+  barHeight: 0.9,
+};
+
+const PLAY_BTN_PREMIUM =
+  'rounded-full border border-white/10 bg-zinc-900/90 text-[#00f2ff] shadow-[0_8px_32px_rgba(0,0,0,0.45)] ring-1 ring-white/5 transition hover:border-[#00f2ff]/35 hover:bg-zinc-800/95 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00f2ff]/50';
+
+export function VaultPlayer({
+  trackData,
+  variant = 'fullscreen',
+  lyricsPresentation = 'inline',
+  autoPlayNonce = 0,
+  onPlaybackEnded,
+  resolveNextTrack,
+  resolvePreviousTrack,
+  onTrackAdvanced,
+  playbackControlAction,
+  playbackControlNonce = 0,
+  onPlayingChange,
+  showSpinningDisc = false,
+}: VaultPlayerProps) {
+  const {
+    bg_image_url,
+    content_type,
+    track_path,
+    thumbnail_url,
+    lock_screen_art_url,
+    title,
+    description_en,
+    description_es,
+    provenance_type,
+    mastering_provenance,
+    genres: genresProp,
+    is_instrumental,
+    is_single,
+    album_title,
+    anonymous_visible,
+    release_date,
+    duration_ms,
+    lyrics,
+    lyrics_by,
+    waveform_json_path,
+    waveform_json_url,
+    waveform_json_vault_path,
+    vault_background_video_path,
+    catalog_track_id,
+  } = trackData;
+
+  const t = useTranslate();
+
+  const vaultWfTrim = waveform_json_vault_path?.trim();
+  const pathTrim = waveform_json_path?.trim();
+  const urlTrim = waveform_json_url?.trim();
+  const wantsWaveformJson = Boolean(vaultWfTrim || pathTrim || urlTrim);
+
+  const cinematic = Boolean(vault_background_video_path?.trim());
+  /** HLS is attached to `<audio>` for vault cinematic layout and for audio-only streams. */
+  const hlsOnAudio = cinematic || content_type === 'audio';
+
+  const [streamError, setStreamError] = useState<{
+    path: string;
+    message: string;
+  } | null>(null);
+  const loadError =
+    streamError?.path === track_path ? streamError.message : null;
+
+  const [lang, setLang] = useState<'en' | 'es'>('en');
+
+  const [waveformState, setWaveformState] = useState<WaveformLoadState>(() =>
+    wantsWaveformJson ? 'loading' : null,
+  );
+
+  const bgVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  /** Same-origin proxy → signed Supabase URL (matches HLS); avoids cross-origin `<video src>` issues. */
+  const vaultBgVideoSrc = useMemo(() => {
+    if (!cinematic || !vault_background_video_path?.trim()) return null;
+    return vaultStreamUrl(vault_background_video_path.trim());
+  }, [cinematic, vault_background_video_path, track_path]);
+
+  useEffect(() => {
+    if (!wantsWaveformJson) {
+      setWaveformState(null);
+      return;
+    }
+    setWaveformState('loading');
+    let cancelled = false;
+
+    const runPublic = (jsonUrl: string) =>
+      fetch(jsonUrl)
+        .then((r) => {
+          if (!r.ok) throw new Error(String(r.status));
+          return r.json() as unknown;
+        })
+        .then((raw) => {
+          const parsed = parseWaveformJson(raw);
+          if (!cancelled) setWaveformState(parsed ?? 'error');
+        });
+
+    if (vaultWfTrim) {
+      const wfStreamUrl = vaultStreamUrl(vaultWfTrim);
+      void fetch(wfStreamUrl, { credentials: 'same-origin' })
+        .then((r) => {
+          if (!r.ok) throw new Error(String(r.status));
+          return r.json() as unknown;
+        })
+        .then((raw) => {
+          const parsed = parseWaveformJson(raw);
+          if (!cancelled) setWaveformState(parsed ?? 'error');
+        })
+        .catch(() => {
+          if (!cancelled) setWaveformState('error');
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    let jsonUrl: string;
+    try {
+      jsonUrl = resolvePublicAssetsUrl(urlTrim ?? pathTrim!);
+    } catch {
+      setWaveformState('error');
+      return () => {
+        cancelled = true;
+      };
+    }
+    void runPublic(jsonUrl).catch(() => {
+      if (!cancelled) setWaveformState('error');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    wantsWaveformJson,
+    vaultWfTrim,
+    pathTrim,
+    urlTrim,
+    track_path,
+  ]);
+
+  const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
+  const waveformContainerRef = useRef<HTMLDivElement | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
+  const recoveringRef = useRef(false);
+  /** User chose play; kept true when the OS pauses on lock so we can try to resume on unlock. */
+  const intendedPlayingRef = useRef(false);
+  const onPlaybackEndedRef = useRef(onPlaybackEnded);
+  const onPlayingChangeRef = useRef(onPlayingChange);
+  const resolveNextTrackRef = useRef(resolveNextTrack);
+  const resolvePreviousTrackRef = useRef(resolvePreviousTrack);
+  const onTrackAdvancedRef = useRef(onTrackAdvanced);
+  const swapStreamToPathRef = useRef<
+    (path: string, autoPlay: boolean) => void
+  >(() => {});
+  useEffect(() => {
+    onPlaybackEndedRef.current = onPlaybackEnded;
+  }, [onPlaybackEnded]);
+  useEffect(() => {
+    onPlayingChangeRef.current = onPlayingChange;
+  }, [onPlayingChange]);
+  useEffect(() => {
+    resolveNextTrackRef.current = resolveNextTrack;
+  }, [resolveNextTrack]);
+  useEffect(() => {
+    resolvePreviousTrackRef.current = resolvePreviousTrack;
+  }, [resolvePreviousTrack]);
+  useEffect(() => {
+    onTrackAdvancedRef.current = onTrackAdvanced;
+  }, [onTrackAdvanced]);
+
+  const [lyricsExpanded, setLyricsExpanded] = useState(false);
+
+  const [playing, setPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [readyForPath, setReadyForPath] = useState<string | null>(null);
+  const mediaReady = readyForPath === track_path;
+
+  useCatalogListenHeartbeat({
+    catalogTrackId: catalog_track_id?.trim(),
+    playing,
+    trackKey: track_path,
+    allowAnonymousListen: Boolean(
+      catalog_track_id?.trim() && anonymous_visible === true,
+    ),
+  });
+
+  const playUrl = useMemo(() => vaultStreamUrl(track_path), [track_path]);
+
+  const lastAutoplayNonceRef = useRef(0);
+  const lastControlNonceRef = useRef(0);
+
+  /** Client navigation can reuse this instance — reset so HLS/WaveSurfer do not keep stale metadata. */
+  useEffect(() => {
+    setReadyForPath(null);
+    setDuration(0);
+    setCurrentTime(0);
+    setPlaying(false);
+    // When the queue advances, `autoPlayNonce` is bumped in the same render as `track_path`.
+    if (autoPlayNonce > 0) {
+      intendedPlayingRef.current = true;
+    } else {
+      intendedPlayingRef.current = false;
+      onPlayingChangeRef.current?.(false);
+    }
+    setStreamError(null);
+    recoveringRef.current = false;
+    setLyricsExpanded(false);
+    lastAutoplayNonceRef.current = 0;
+    lastControlNonceRef.current = 0;
+    // `autoPlayNonce` intentionally omitted — repeat-one bumps nonce without changing path.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read latest nonce only on path change
+  }, [track_path]);
+
+  useEffect(() => {
+    if (autoPlayNonce <= 0) return;
+    intendedPlayingRef.current = true;
+    lastAutoplayNonceRef.current = 0;
+  }, [autoPlayNonce]);
+
+  useEffect(() => {
+    if (lyricsPresentation === 'inline') setLyricsExpanded(false);
+  }, [lyricsPresentation]);
+
+  /** Background loop: paused on first frame until music plays; stays in sync with audio. */
+  useEffect(() => {
+    const el = bgVideoRef.current;
+    if (!el || !vaultBgVideoSrc || !cinematic) return;
+    el.load();
+    el.pause();
+    el.currentTime = 0;
+  }, [vaultBgVideoSrc, cinematic]);
+
+  useEffect(() => {
+    const el = bgVideoRef.current;
+    if (!el || !cinematic || !vaultBgVideoSrc) return;
+    if (playing) {
+      void el.play().catch(() => {});
+    } else {
+      el.pause();
+    }
+  }, [playing, cinematic, vaultBgVideoSrc]);
+
+  useEffect(() => {
+    const container = waveformContainerRef.current;
+    const media = mediaRef.current;
+    if (!container || !media || !mediaReady || waveformState === 'loading') {
+      return;
+    }
+    if (!Number.isFinite(duration) || duration <= 0) {
+      return;
+    }
+
+    const useJson = isParsedWaveform(waveformState);
+    const peakChannels = useJson
+      ? downsamplePeaksForDisplay(waveformState.peaks, WAVEFORM_DISPLAY_BINS)
+      : [buildPlaceholderPeaks(WAVEFORM_DISPLAY_BINS)];
+    /** Prefer media duration: JSON peaks are often a few seconds short of the real HLS length. */
+    const jsonDur =
+      useJson && waveformState.duration > 0 ? waveformState.duration : 0;
+    const waveDuration = jsonDur > 0 ? Math.max(duration, jsonDur) : duration;
+
+    const ws = WaveSurfer.create({
+      container,
+      backend: 'MediaElement',
+      height: VAULT_WAVESURFER.height,
+      waveColor: VAULT_WAVESURFER.waveColor,
+      progressColor: VAULT_WAVESURFER.progressColor,
+      cursorColor: VAULT_WAVESURFER.cursorColor,
+      cursorWidth: VAULT_WAVESURFER.cursorWidth,
+      peaks: peakChannels,
+      duration: waveDuration,
+      interact: true,
+      dragToSeek: { debounceTime: 0 },
+      normalize: true,
+      barHeight: VAULT_WAVESURFER.barHeight,
+      fillParent: true,
+    });
+
+    let cancelled = false;
+
+    const attachHlsMedia = () => {
+      if (cancelled) return;
+      try {
+        ws.setMediaElement(media);
+      } catch {
+        /* already wired */
+      }
+    };
+
+    ws.on('ready', attachHlsMedia, { once: true });
+    if (ws.getDecodedData()) {
+      queueMicrotask(attachHlsMedia);
+    }
+
+    return () => {
+      cancelled = true;
+      ws.destroy();
+    };
+    // Use floored duration so HLS `durationchange` ticks do not destroy/recreate WaveSurfer mid-playback.
+  }, [
+    mediaReady,
+    duration > 0 ? Math.floor(duration) : 0,
+    track_path,
+    playUrl,
+    waveformState,
+  ]);
+
+  /** Background-tab / lock-screen only — swaps HLS on the live element without waiting for React. */
+  const swapStreamToPath = useCallback((path: string, autoPlay: boolean) => {
+    const media = mediaRef.current;
+    if (!media || !path.trim()) return;
+
+    if (autoPlay) {
+      intendedPlayingRef.current = true;
+    }
+
+    const url = vaultStreamUrl(path);
+    const hls = hlsRef.current;
+
+    if (hls) {
+      try {
+        hls.loadSource(url);
+        hls.startLoad(0);
+      } catch {
+        /* ignore */
+      }
+    } else if (media.canPlayType('application/vnd.apple.mpegurl')) {
+      media.src = url;
+      try {
+        media.load();
+      } catch {
+        /* ignore */
+      }
+    } else {
+      media.src = url;
+      try {
+        media.load();
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (autoPlay) {
+      if (
+        media.ended ||
+        (Number.isFinite(media.duration) &&
+          media.duration > 0 &&
+          media.currentTime >= media.duration - 0.25)
+      ) {
+        try {
+          media.currentTime = 0;
+        } catch {
+          /* ignore */
+        }
+      }
+      void media.play().catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    swapStreamToPathRef.current = swapStreamToPath;
+  }, [swapStreamToPath]);
+
+  useEffect(() => {
+    const media = mediaRef.current;
+    if (!media || !playUrl) return;
+
+    const destroyHls = () => {
+      if (hlsRef.current) {
+        try {
+          hlsRef.current.detachMedia();
+        } catch {
+          /* ignore */
+        }
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+
+    destroyHls();
+    media.pause();
+    media.removeAttribute('src');
+    try {
+      media.load();
+    } catch {
+      /* ignore */
+    }
+
+    /** Debounce MEDIA_ERR_DECODE / MEDIA_ERR_SRC_NOT_SUPPORTED — often transient with HLS. */
+    let softMediaErrorTimer: number | null = null;
+
+    const clearStreamErrorForThisTrack = () => {
+      setStreamError((prev) => (prev?.path === track_path ? null : prev));
+    };
+
+    const scheduleSoftMediaErrorBanner = () => {
+      if (softMediaErrorTimer) window.clearTimeout(softMediaErrorTimer);
+      softMediaErrorTimer = window.setTimeout(() => {
+        softMediaErrorTimer = null;
+        const el = mediaRef.current;
+        if (el !== media) return;
+        if (!el.src?.trim()) return;
+        const c = el.error?.code;
+        if (c !== 3 && c !== 4) return;
+        if (!el.paused) return;
+        const message =
+          c === 4
+            ? 'Stream format hiccup — press play again or refresh if audio never starts.'
+            : 'Stream decode hiccup — press play again or refresh if audio never starts.';
+        setStreamError({
+          path: track_path,
+          message,
+        });
+      }, 700);
+    };
+
+    const onMediaError = () => {
+      if (!media.src?.trim()) return;
+      const code = media.error?.code;
+      if (code === 1) return;
+      if (code === 3 || code === 4) {
+        scheduleSoftMediaErrorBanner();
+        return;
+      }
+      const map: Record<number, string> = {
+        1: 'Playback aborted',
+        2: 'Network error',
+        3: 'Decode error',
+        4: 'Source not supported',
+      };
+      setStreamError({
+        path: track_path,
+        message:
+          code != null ? map[code] ?? `Media error (${code})` : 'Playback failed',
+      });
+    };
+
+    const onPlaying = () => {
+      if (softMediaErrorTimer) {
+        window.clearTimeout(softMediaErrorTimer);
+        softMediaErrorTimer = null;
+      }
+      clearStreamErrorForThisTrack();
+    };
+
+    if (media.canPlayType('application/vnd.apple.mpegurl')) {
+      media.src = playUrl;
+    } else if (Hls.isSupported()) {
+      // Safari uses native HLS above; this path is Chrome/Firefox/Edge (MSE). Chrome is
+      // much more reliable with the main-thread transmuxer — the worker + MSE path is a
+      // common source of stalls and broken replay after `ended` on `<audio>`.
+      const hls = new Hls({
+        enableWorker: false,
+        // Wider hole tolerance + more gap nudges — small discontinuities at segment joins are common on MSE.
+        maxBufferHole: 1,
+        nudgeOffset: 0.15,
+        nudgeMaxRetry: 8,
+        highBufferWatchdogPeriod: 1,
+      });
+      hlsRef.current = hls;
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          try {
+            hls.startLoad(-1);
+            return;
+          } catch {
+            /* fall through to user-facing error */
+          }
+        }
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          if (!recoveringRef.current) {
+            recoveringRef.current = true;
+            try {
+              hls.recoverMediaError();
+              window.setTimeout(() => {
+                recoveringRef.current = false;
+              }, 1200);
+              return;
+            } catch {
+              recoveringRef.current = false;
+            }
+          } else {
+            return;
+          }
+        }
+        const message =
+          data.type === Hls.ErrorTypes.NETWORK_ERROR
+            ? 'Network error while loading the stream.'
+            : data.type === Hls.ErrorTypes.MEDIA_ERROR
+              ? 'Media error during playback.'
+              : 'Could not play this stream.';
+        setStreamError({ path: track_path, message });
+      });
+      hls.loadSource(playUrl);
+      hls.attachMedia(media);
+    } else {
+      media.src = playUrl;
+    }
+
+    const markStreamPlayable = () => {
+      setReadyForPath((prev) => (prev === track_path ? prev : track_path));
+    };
+
+    const tryIntendedPlay = () => {
+      if (!intendedPlayingRef.current) return;
+      if (!media.paused && !media.ended) return;
+      void media.play().catch(() => {});
+    };
+
+    const onStreamProgress = () => {
+      markStreamPlayable();
+      tryIntendedPlay();
+    };
+
+    const hls = hlsRef.current;
+    if (hls) {
+      hls.on(Hls.Events.MANIFEST_PARSED, tryIntendedPlay);
+      hls.on(Hls.Events.FRAG_BUFFERED, tryIntendedPlay);
+    }
+
+    const onTime = () => setCurrentTime(media.currentTime);
+    const onDuration = () => {
+      markStreamPlayable();
+      const d = media.duration;
+      if (Number.isFinite(d)) setDuration(d);
+      if (softMediaErrorTimer) {
+        window.clearTimeout(softMediaErrorTimer);
+        softMediaErrorTimer = null;
+      }
+      clearStreamErrorForThisTrack();
+    };
+    const onPause = () => {
+      setPlaying(false);
+      onPlayingChangeRef.current?.(false);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
+    };
+    const onPlay = () => {
+      setPlaying(true);
+      onPlayingChangeRef.current?.(true);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+    };
+    const onEnded = () => {
+      const hasQueue = Boolean(
+        resolveNextTrackRef.current || onPlaybackEndedRef.current,
+      );
+      const next =
+        document.hidden && resolveNextTrackRef.current
+          ? resolveNextTrackRef.current()
+          : null;
+
+      // Locked / background tabs defer React — swap the stream synchronously.
+      if (next?.track_path?.trim() && document.hidden) {
+        intendedPlayingRef.current = true;
+        applyLockScreenMetadata(next);
+        swapStreamToPathRef.current(next.track_path, true);
+        onTrackAdvancedRef.current?.(next);
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'playing';
+        }
+        const d = media.duration;
+        if (Number.isFinite(d) && d > 0) {
+          setCurrentTime(d);
+        }
+        return;
+      }
+
+      if (hasQueue) {
+        intendedPlayingRef.current = true;
+      } else {
+        intendedPlayingRef.current = false;
+        onPlayingChangeRef.current?.(false);
+      }
+      setPlaying(false);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = hasQueue ? 'paused' : 'none';
+      }
+      const d = media.duration;
+      if (Number.isFinite(d) && d > 0) {
+        setCurrentTime(d);
+      }
+      onPlaybackEndedRef.current?.();
+    };
+
+    media.addEventListener('timeupdate', onTime);
+    media.addEventListener('loadeddata', onStreamProgress);
+    media.addEventListener('canplay', onStreamProgress);
+    media.addEventListener('loadedmetadata', onDuration);
+    media.addEventListener('durationchange', onDuration);
+    media.addEventListener('play', onPlay);
+    media.addEventListener('pause', onPause);
+    media.addEventListener('ended', onEnded);
+    media.addEventListener('playing', onPlaying);
+    media.addEventListener('error', onMediaError);
+
+    queueMicrotask(() => {
+      if (mediaRef.current !== media) return;
+      if (media.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+        onStreamProgress();
+      } else if (intendedPlayingRef.current) {
+        tryIntendedPlay();
+      }
+    });
+
+    return () => {
+      if (softMediaErrorTimer) {
+        window.clearTimeout(softMediaErrorTimer);
+        softMediaErrorTimer = null;
+      }
+      if (hls) {
+        hls.off(Hls.Events.MANIFEST_PARSED, tryIntendedPlay);
+        hls.off(Hls.Events.FRAG_BUFFERED, tryIntendedPlay);
+      }
+      media.removeEventListener('timeupdate', onTime);
+      media.removeEventListener('loadeddata', onStreamProgress);
+      media.removeEventListener('canplay', onStreamProgress);
+      media.removeEventListener('loadedmetadata', onDuration);
+      media.removeEventListener('durationchange', onDuration);
+      media.removeEventListener('play', onPlay);
+      media.removeEventListener('pause', onPause);
+      media.removeEventListener('ended', onEnded);
+      media.removeEventListener('playing', onPlaying);
+      media.removeEventListener('error', onMediaError);
+      destroyHls();
+      media.pause();
+      media.removeAttribute('src');
+      media.load();
+    };
+  }, [playUrl, hlsOnAudio, track_path]);
+
+  const playMedia = useCallback(() => {
+    const media = mediaRef.current;
+    if (!media) return;
+    intendedPlayingRef.current = true;
+    const d = media.duration;
+    const nearEnd =
+      Number.isFinite(d) && d > 0 && media.currentTime >= d - 0.25;
+    const atEnd = media.ended || nearEnd;
+
+    if (atEnd) {
+      const hls = hlsRef.current;
+      if (hls) {
+        try {
+          hls.startLoad(0);
+        } catch {
+          /* ignore */
+        }
+      }
+      media.currentTime = 0;
+      const play = () => {
+        void media.play().catch(() => {});
+      };
+      const onSeeked = () => {
+        clearTimeout(fallback);
+        play();
+      };
+      media.addEventListener('seeked', onSeeked, { once: true });
+      const fallback = window.setTimeout(() => {
+        media.removeEventListener('seeked', onSeeked);
+        play();
+      }, 300);
+      return;
+    }
+
+    void media.play().catch(() => {});
+  }, []);
+
+  const pauseMedia = useCallback((userInitiated = true) => {
+    if (userInitiated) intendedPlayingRef.current = false;
+    mediaRef.current?.pause();
+  }, []);
+
+  const togglePlay = useCallback(() => {
+    const media = mediaRef.current;
+    if (!media) return;
+    if (media.paused) playMedia();
+    else pauseMedia();
+  }, [playMedia, pauseMedia]);
+
+  useEffect(() => {
+    if (autoPlayNonce <= 0) return;
+    if (lastAutoplayNonceRef.current >= autoPlayNonce) return;
+    intendedPlayingRef.current = true;
+
+    const media = mediaRef.current;
+    if (!media) return;
+
+    const targetNonce = autoPlayNonce;
+
+    const markAutoplayDone = () => {
+      if (lastAutoplayNonceRef.current < targetNonce) {
+        lastAutoplayNonceRef.current = targetNonce;
+      }
+    };
+
+    const tryAutoplay = () => {
+      if (lastAutoplayNonceRef.current >= targetNonce) return;
+      if (!intendedPlayingRef.current) return;
+      if (!media.paused && !media.ended) {
+        markAutoplayDone();
+        return;
+      }
+      playMedia();
+    };
+
+    const onPlayingForAutoplay = () => {
+      markAutoplayDone();
+    };
+
+    tryAutoplay();
+    media.addEventListener('canplay', tryAutoplay);
+    media.addEventListener('loadeddata', tryAutoplay);
+    media.addEventListener('playing', onPlayingForAutoplay);
+    return () => {
+      media.removeEventListener('canplay', tryAutoplay);
+      media.removeEventListener('loadeddata', tryAutoplay);
+      media.removeEventListener('playing', onPlayingForAutoplay);
+    };
+  }, [autoPlayNonce, playUrl, track_path, playMedia]);
+
+  useEffect(() => {
+    if (playbackControlNonce <= 0 || !mediaReady) return;
+    if (lastControlNonceRef.current >= playbackControlNonce) return;
+    const media = mediaRef.current;
+    if (!media) return;
+    lastControlNonceRef.current = playbackControlNonce;
+    if (playbackControlAction === 'stop') {
+      pauseMedia();
+      try {
+        media.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+      setCurrentTime(0);
+      setPlaying(false);
+      onPlayingChangeRef.current?.(false);
+      return;
+    }
+    if (playbackControlAction === 'toggle') {
+      if (media.paused) playMedia();
+      else pauseMedia();
+    }
+  }, [playbackControlAction, playbackControlNonce, mediaReady, playMedia, pauseMedia]);
+
+  /**
+   * Mobile browsers (especially private/incognito) suspend the tab on lock and pause media.
+   * Resume when the page is visible again if the user did not explicitly pause.
+   */
+  useEffect(() => {
+    if (!mediaReady) return;
+
+    const tryResumeAfterUnlock = () => {
+      if (document.hidden) return;
+      const media = mediaRef.current;
+      if (!media || !intendedPlayingRef.current) return;
+
+      if (media.ended && onPlaybackEndedRef.current) {
+        intendedPlayingRef.current = true;
+        onPlaybackEndedRef.current();
+        return;
+      }
+
+      if (!media.paused) return;
+      playMedia();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        bgVideoRef.current?.pause();
+        return;
+      }
+      tryResumeAfterUnlock();
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', tryResumeAfterUnlock);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', tryResumeAfterUnlock);
+    };
+  }, [mediaReady, playMedia]);
+
+  const lockScreenTitle = title?.trim() || 'Track';
+  const lockScreenArtworkHref = useMemo(() => {
+    /** Per-track art first; env var is only a site-wide fallback. */
+    const raw =
+      lock_screen_art_url?.trim() ||
+      thumbnail_url?.trim() ||
+      MEDIA_SESSION_ART_ENV ||
+      '';
+    if (!raw) return null;
+    const absolute =
+      typeof window === 'undefined' ? raw : resolveAbsoluteMediaUrl(raw);
+    return withLockScreenArtCacheBust(absolute);
+  }, [lock_screen_art_url, thumbnail_url]);
+
+  /** Lock screen / Control Center / CarPlay — tie remote controls to HLS element, not the muted hero video. */
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const media = mediaRef.current;
+    if (!media || !mediaReady) return;
+
+    const ms = navigator.mediaSession;
+
+    const syncPositionState = () => {
+      if (typeof ms.setPositionState !== 'function') return;
+      const d = media.duration;
+      if (!Number.isFinite(d) || d <= 0) return;
+      const pos = Math.min(Math.max(0, media.currentTime), d);
+      try {
+        ms.setPositionState({
+          duration: d,
+          playbackRate: media.playbackRate || 1,
+          position: pos,
+        });
+      } catch {
+        /* Safari throws if state is invalid */
+      }
+    };
+
+    const applyMetadata = () => {
+      try {
+        ms.metadata = new MediaMetadata({
+          title: lockScreenTitle,
+          artist: '',
+          artwork: lockScreenArtworkHref
+            ? [
+                { src: lockScreenArtworkHref, sizes: '512x512' },
+                { src: lockScreenArtworkHref, sizes: '256x256' },
+              ]
+            : [],
+        });
+      } catch {
+        try {
+          ms.metadata = new MediaMetadata({
+            title: lockScreenTitle,
+            artist: '',
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+
+    applyMetadata();
+    media.addEventListener('playing', applyMetadata, { once: true });
+
+    const skipSeconds = 15;
+
+    ms.setActionHandler?.('play', () => {
+      playMedia();
+    });
+    ms.setActionHandler?.('pause', () => {
+      pauseMedia();
+    });
+    ms.setActionHandler?.('seekbackward', (e) => {
+      const delta = e.seekOffset ?? skipSeconds;
+      media.currentTime = Math.max(0, media.currentTime - delta);
+      syncPositionState();
+    });
+    ms.setActionHandler?.('seekforward', (e) => {
+      const delta = e.seekOffset ?? skipSeconds;
+      const end = Number.isFinite(media.duration) ? media.duration : media.currentTime + delta;
+      media.currentTime = Math.min(end, media.currentTime + delta);
+      syncPositionState();
+    });
+    ms.setActionHandler?.('seekto', (e) => {
+      if (e.seekTime == null || !Number.isFinite(e.seekTime)) return;
+      const d = media.duration;
+      const t = Number.isFinite(d)
+        ? Math.min(Math.max(0, e.seekTime), d)
+        : Math.max(0, e.seekTime);
+      media.currentTime = t;
+      syncPositionState();
+    });
+
+    const advanceFromLockControl = (target: VaultTrackData | null | undefined) => {
+      if (!target?.track_path?.trim()) return;
+      if (document.hidden) {
+        intendedPlayingRef.current = true;
+        applyLockScreenMetadata(target);
+        swapStreamToPathRef.current(target.track_path, true);
+        onTrackAdvancedRef.current?.(target);
+        return;
+      }
+      intendedPlayingRef.current = true;
+      onTrackAdvancedRef.current?.(target);
+    };
+
+    if (resolveNextTrackRef.current) {
+      ms.setActionHandler?.('nexttrack', () => {
+        advanceFromLockControl(resolveNextTrackRef.current?.());
+      });
+    }
+    if (resolvePreviousTrackRef.current) {
+      ms.setActionHandler?.('previoustrack', () => {
+        advanceFromLockControl(resolvePreviousTrackRef.current?.());
+      });
+    }
+
+    const onTime = () => syncPositionState();
+    media.addEventListener('timeupdate', onTime);
+    media.addEventListener('durationchange', syncPositionState);
+    media.addEventListener('ratechange', syncPositionState);
+    syncPositionState();
+
+    return () => {
+      media.removeEventListener('timeupdate', onTime);
+      media.removeEventListener('durationchange', syncPositionState);
+      media.removeEventListener('ratechange', syncPositionState);
+      ms.setActionHandler?.('play', null);
+      ms.setActionHandler?.('pause', null);
+      ms.setActionHandler?.('seekbackward', null);
+      ms.setActionHandler?.('seekforward', null);
+      ms.setActionHandler?.('seekto', null);
+      ms.setActionHandler?.('nexttrack', null);
+      ms.setActionHandler?.('previoustrack', null);
+      ms.metadata = null;
+    };
+  }, [
+    mediaReady,
+    track_path,
+    lockScreenTitle,
+    lockScreenArtworkHref,
+    playMedia,
+    pauseMedia,
+  ]);
+
+  const description =
+    lang === 'en' ? description_en ?? description_es : description_es ?? description_en;
+
+  const hasBothLang =
+    Boolean(description_en?.trim()) && Boolean(description_es?.trim());
+
+  const compactMetaLine = useMemo(
+    () =>
+      buildCompactTrackMetaLine(
+        {
+          release_date,
+          duration_ms,
+          genres: genresProp,
+        },
+        { includeDuration: false },
+      ),
+    [release_date, duration_ms, genresProp],
+  );
+
+  const albumSecondLine =
+    is_single === false && Boolean(album_title?.trim());
+  const showDescriptionBlock =
+    !albumSecondLine &&
+    Boolean(description_en?.trim() || description_es?.trim());
+
+  const hasBottomMeta =
+    Boolean(title?.trim()) ||
+    showDescriptionBlock ||
+    albumSecondLine ||
+    Boolean(provenance_type) ||
+    Boolean(mastering_provenance) ||
+    Boolean(is_instrumental) ||
+    Boolean(is_single) ||
+    Boolean(compactMetaLine) ||
+    Boolean(catalog_track_id?.trim());
+
+  const embedded = variant === 'embedded';
+  const compactEmbedded = embedded && !showSpinningDisc;
+  const showCinematicHero = cinematic && !compactEmbedded;
+  const layer = embedded ? 'absolute' : 'fixed';
+  const verticalAlign = embedded
+    ? compactEmbedded
+      ? 'justify-start'
+      : 'justify-center'
+    : 'justify-start sm:justify-center';
+  const shellMin = embedded
+    ? showSpinningDisc
+      ? 'min-h-[min(480px,82dvh)] sm:min-h-[min(520px,78dvh)] lg:min-h-[min(560px,80dvh)]'
+      : 'min-h-0'
+    : 'min-h-[100dvh]';
+
+  const waveformShellClass = compactEmbedded
+    ? 'min-h-[72px] w-full overflow-hidden rounded-xl border border-[#00f2ff]/20 bg-black/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_28px_-8px_rgba(0,242,255,0.15)]'
+    : 'min-h-[96px] w-full overflow-hidden rounded-xl border border-[#00f2ff]/20 bg-black/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_28px_-8px_rgba(0,242,255,0.15)]';
+
+  const playBtnClass = `${PLAY_BTN_PREMIUM} flex shrink-0 items-center justify-center`;
+  /** Keeps play/wave row from shifting when loading copy mounts/unmounts. */
+  const streamStatusRowClass =
+    'flex min-h-[1.375rem] items-center justify-center sm:justify-start';
+
+  const showBackdropImage = !cinematic && !compactEmbedded;
+
+  return (
+    <div
+      className={`relative w-full overflow-x-hidden overflow-y-auto ${shellMin} ${embedded ? 'rounded-xl bg-zinc-950' : ''} ${cinematic ? 'bg-zinc-950' : ''}`}
+    >
+      {showBackdropImage ? (
+        <>
+          <div className={`pointer-events-none ${layer} inset-0 z-0`}>
+            {isStockPhotoBackdropUrl(bg_image_url) ? (
+              <div
+                className="h-full w-full bg-gradient-to-br from-zinc-900 via-zinc-950 to-black"
+                aria-hidden
+              />
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={bg_image_url}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            )}
+          </div>
+          <div
+            className={`${layer} inset-0 z-10 backdrop-blur-3xl bg-black/70`}
+            aria-hidden
+          />
+        </>
+      ) : (
+        <div
+          className={`pointer-events-none ${layer} inset-0 z-0 bg-zinc-950`}
+          aria-hidden
+        />
+      )}
+
+      <div
+        className={`relative z-20 flex ${shellMin} flex-col items-center ${verticalAlign} ${embedded ? (compactEmbedded ? 'p-2 sm:p-3' : 'p-3 sm:p-4 lg:p-6') : 'p-4 sm:p-8'}`}
+      >
+        <div
+          className={`w-full border border-[#00f2ff]/20 bg-zinc-950/80 shadow-[0_0_48px_-12px_rgba(0,242,255,0.12)] backdrop-blur-md ${
+            embedded
+              ? compactEmbedded
+                ? 'max-w-none rounded-xl p-2 sm:rounded-2xl sm:p-4'
+                : 'max-w-none rounded-xl p-3 sm:rounded-2xl sm:p-5 lg:p-8'
+              : 'max-w-3xl rounded-2xl p-4 sm:p-8'
+          }`}
+          style={{
+            boxShadow:
+              '0 8px 32px rgba(0,0,0,0.55), inset 0 1px 0 rgba(0,242,255,0.08)',
+          }}
+        >
+          {loadError ? (
+            <p className="mb-4 text-center text-sm text-red-300">{loadError}</p>
+          ) : null}
+          {wantsWaveformJson && waveformState === 'error' ? (
+            <p className="mb-3 text-center text-xs text-amber-200/90">
+              Waveform JSON failed to load — showing placeholder shape.
+            </p>
+          ) : null}
+
+          <div
+            className="select-none"
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            {showCinematicHero ? (
+              <div className="space-y-4">
+                <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-black ring-1 ring-white/5">
+                  {vaultBgVideoSrc ? (
+                    <video
+                      ref={bgVideoRef}
+                      key={`${track_path}:${vaultBgVideoSrc}`}
+                      className="vault-hero-video pointer-events-none absolute inset-0 z-0 h-full w-full object-cover object-center"
+                      src={vaultBgVideoSrc}
+                      muted
+                      loop
+                      playsInline
+                      preload="auto"
+                      disableRemotePlayback
+                      onError={() => {
+                        /* Optional hero loop — missing file must not block audio/HLS. */
+                      }}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-sm text-zinc-400">
+                      Loading background…
+                    </div>
+                  )}
+                  <div
+                    className="pointer-events-none absolute inset-0 z-10 bg-black/45"
+                    aria-hidden
+                  />
+                </div>
+
+                <audio
+                  key={`hls-audio-${track_path}`}
+                  ref={(el) => {
+                    mediaRef.current = el;
+                  }}
+                  className="sr-only"
+                  playsInline
+                  preload="metadata"
+                  controls={false}
+                />
+
+                <div className={`${streamStatusRowClass} text-sm text-zinc-400`} aria-live="polite">
+                  {!mediaReady ? <p>Loading stream…</p> : null}
+                </div>
+
+                <div className="w-full space-y-3">
+                  {waveformState === 'loading' ? (
+                    <div
+                      className={`${waveformShellClass} flex items-center justify-center text-xs text-[#00f2ff]/70`}
+                    >
+                      Loading waveform…
+                    </div>
+                  ) : (
+                    <div
+                      key={`wf-${track_path}`}
+                      ref={waveformContainerRef}
+                      className={waveformShellClass}
+                      onContextMenu={(e) => e.preventDefault()}
+                    />
+                  )}
+                  <div className="flex flex-col items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      className={`${playBtnClass} h-14 w-14`}
+                      aria-label={playing ? t('ctaPause') : t('ctaPlay')}
+                    >
+                      {playing ? (
+                        <Pause className="h-7 w-7" fill="currentColor" />
+                      ) : (
+                        <Play className="h-7 w-7 pl-1" fill="currentColor" />
+                      )}
+                    </button>
+                    <WaveformTimecode currentTime={currentTime} duration={duration} />
+                  </div>
+                </div>
+              </div>
+            ) : content_type === 'video' ? (
+              <div className="space-y-4">
+                <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-[#00f2ff]/15 bg-black shadow-[0_0_32px_-10px_rgba(123,46,255,0.15)] ring-1 ring-white/5">
+                  <video
+                    key={`hls-video-${track_path}`}
+                    ref={(el) => {
+                      mediaRef.current = el;
+                    }}
+                    className="h-full w-full object-contain"
+                    playsInline
+                    preload="metadata"
+                    controls={false}
+                    controlsList="nodownload"
+                    disablePictureInPicture
+                    onContextMenu={(e) => e.preventDefault()}
+                  />
+                  {!mediaReady ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm text-zinc-300">
+                      Loading stream…
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="w-full space-y-3">
+                  {waveformState === 'loading' ? (
+                    <div
+                      className={`${waveformShellClass} flex items-center justify-center text-xs text-[#00f2ff]/70`}
+                    >
+                      Loading waveform…
+                    </div>
+                  ) : (
+                    <div
+                      key={`wf-${track_path}`}
+                      ref={waveformContainerRef}
+                      className={waveformShellClass}
+                      onContextMenu={(e) => e.preventDefault()}
+                    />
+                  )}
+                  <div className="flex flex-col items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      className={`${playBtnClass} h-14 w-14`}
+                      aria-label={playing ? t('ctaPause') : t('ctaPlay')}
+                    >
+                      {playing ? (
+                        <Pause className="h-7 w-7" fill="currentColor" />
+                      ) : (
+                        <Play className="h-7 w-7 pl-1" fill="currentColor" />
+                      )}
+                    </button>
+                    <WaveformTimecode currentTime={currentTime} duration={duration} />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className={showSpinningDisc ? 'space-y-6' : 'space-y-2'}>
+                <div
+                  className={`flex flex-col items-center ${showSpinningDisc ? 'gap-6' : 'gap-2'}`}
+                >
+                  {showSpinningDisc ? (
+                    <VaultPlayerSpinningDisc
+                      thumbnailUrl={thumbnail_url}
+                      playing={playing}
+                    />
+                  ) : null}
+
+                  <audio
+                    key={`hls-audio-vinyl-${track_path}`}
+                    ref={(el) => {
+                      mediaRef.current = el;
+                    }}
+                    className="sr-only"
+                    playsInline
+                    preload="metadata"
+                    controls={false}
+                  />
+
+                  {!(compactEmbedded && mediaReady) ? (
+                    <div
+                      className={`${streamStatusRowClass} text-sm text-zinc-400`}
+                      aria-live="polite"
+                    >
+                      {!mediaReady ? <p>Loading stream…</p> : null}
+                    </div>
+                  ) : null}
+
+                  <div
+                    className={`w-full space-y-3 ${embedded ? 'max-w-none' : 'max-w-md'}`}
+                  >
+                    {waveformState === 'loading' ? (
+                      <div
+                        className={`${waveformShellClass} flex items-center justify-center text-xs text-[#00f2ff]/70`}
+                      >
+                        Loading waveform…
+                      </div>
+                    ) : (
+                      <div
+                        key={`wf-${track_path}`}
+                        ref={waveformContainerRef}
+                        className={waveformShellClass}
+                        onContextMenu={(e) => e.preventDefault()}
+                      />
+                    )}
+                    <div className="flex flex-col items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={togglePlay}
+                        className={`${playBtnClass} h-14 w-14`}
+                        aria-label={playing ? t('ctaPause') : t('ctaPlay')}
+                      >
+                        {playing ? (
+                          <Pause className="h-7 w-7" fill="currentColor" />
+                        ) : (
+                          <Play className="h-7 w-7 pl-1" fill="currentColor" />
+                        )}
+                      </button>
+                      <WaveformTimecode currentTime={currentTime} duration={duration} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {hasBottomMeta ? (
+            <div
+              className={`space-y-3 border-t border-white/10 ${compactEmbedded ? 'mt-4 pt-4' : 'mt-8 pt-6'}`}
+            >
+              {title?.trim() ||
+              is_instrumental ||
+              is_single ||
+              catalog_track_id?.trim() ? (
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  {title?.trim() ? (
+                    <h1 className="text-center text-xl font-semibold tracking-tight text-white drop-shadow-[0_0_18px_rgba(0,242,255,0.2)] sm:text-2xl">
+                      {title}
+                    </h1>
+                  ) : null}
+                  {is_single ? (
+                    <span className="rounded-full border border-teal-400/35 bg-teal-950/70 px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-teal-200">
+                      {t('badgeSingle')}
+                    </span>
+                  ) : null}
+                  {is_instrumental ? (
+                    <span className="rounded-full border border-zinc-500/50 bg-zinc-900/80 px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-zinc-200">
+                      {t('badgeInstrumental')}
+                    </span>
+                  ) : null}
+                  {catalog_track_id?.trim() ? (
+                    <VaultPlayerFavoriteButton catalogTrackId={catalog_track_id} />
+                  ) : null}
+                </div>
+              ) : null}
+
+              {albumSecondLine ? (
+                <p className="text-center text-sm leading-relaxed text-zinc-400 sm:text-base">
+                  {album_title?.trim()}
+                </p>
+              ) : showDescriptionBlock ? (
+                <div className="space-y-2">
+                  {hasBothLang ? (
+                    <div className="flex justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setLang('en')}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                          lang === 'en'
+                            ? 'bg-[#00f2ff]/20 text-[#00f2ff] ring-1 ring-[#00f2ff]/40'
+                            : 'bg-white/5 text-zinc-400 hover:bg-white/10'
+                        }`}
+                      >
+                        EN
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLang('es')}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                          lang === 'es'
+                            ? 'bg-[#7b2eff]/25 text-violet-200 ring-1 ring-[#7b2eff]/40'
+                            : 'bg-white/5 text-zinc-400 hover:bg-white/10'
+                        }`}
+                      >
+                        ES
+                      </button>
+                    </div>
+                  ) : null}
+                  {description ? (
+                    <p className="text-center text-sm leading-relaxed text-zinc-400 sm:text-base">
+                      {description}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {compactMetaLine ? (
+                <p className="text-center text-xs tabular-nums text-zinc-500">
+                  {compactMetaLine}
+                </p>
+              ) : null}
+
+              {provenance_type || mastering_provenance ? (
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                  {provenance_type ? (
+                    <ProvenanceBadge type={provenance_type} />
+                  ) : null}
+                  {mastering_provenance ? (
+                    <span className="rounded-full border border-violet-500/45 bg-violet-950/55 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-100/95">
+                      {mastering_provenance === 'STUDIO MASTERED'
+                        ? t('badgeStudioMastered')
+                        : t('badgeAiMastered')}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {(() => {
+            const hasLyricsBody = Boolean(lyrics?.trim());
+            const hasLyricsBy = Boolean(lyrics_by?.trim());
+            if ((!hasLyricsBody && !hasLyricsBy) || is_instrumental) return null;
+
+            const display = (
+              <LyricsDisplay
+                lyrics={lyrics}
+                lyricsBy={lyrics_by}
+                variant="vault"
+              />
+            );
+
+            if (lyricsPresentation === 'collapsible' && hasLyricsBody) {
+              return (
+                <div className="mt-8 border-t border-white/10 pt-5">
+                  {!lyricsExpanded ? (
+                    <button
+                      type="button"
+                      onClick={() => setLyricsExpanded(true)}
+                      className="w-full rounded-lg border border-cyan-400/35 bg-cyan-500/10 px-4 py-2.5 text-center text-sm font-medium text-cyan-100 transition hover:border-cyan-300/50 hover:bg-cyan-500/15"
+                    >
+                      {t('ctaShowLyrics')}
+                    </button>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => setLyricsExpanded(false)}
+                          className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300 hover:bg-white/10"
+                        >
+                          {t('ctaHideLyrics')}
+                        </button>
+                      </div>
+                      {display}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (lyricsPresentation === 'collapsible' && !hasLyricsBody && hasLyricsBy) {
+              return (
+                <div className="mt-8 border-t border-white/10 pt-6">{display}</div>
+              );
+            }
+
+            return (
+              <div className="mt-8 border-t border-white/10 pt-6">{display}</div>
+            );
+          })()}
+        </div>
+      </div>
+    </div>
+  );
+}
