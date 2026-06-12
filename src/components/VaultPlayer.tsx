@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { flushSync } from 'react-dom';
 import WaveSurfer from 'wavesurfer.js';
 
 import {
@@ -387,6 +388,8 @@ export function VaultPlayer({
   const swapStreamToPathRef = useRef<
     (path: string, autoPlay: boolean) => void
   >(() => {});
+  /** Prevents double queue advance when both `ended` and a near-end `timeupdate` fire. */
+  const endedHandledForPathRef = useRef<string | null>(null);
   useEffect(() => {
     onPlaybackEndedRef.current = onPlaybackEnded;
   }, [onPlaybackEnded]);
@@ -427,6 +430,7 @@ export function VaultPlayer({
 
   /** Client navigation can reuse this instance — reset so HLS/WaveSurfer do not keep stale metadata. */
   useEffect(() => {
+    endedHandledForPathRef.current = null;
     setReadyForPath(null);
     setDuration(0);
     setCurrentTime(0);
@@ -451,6 +455,7 @@ export function VaultPlayer({
     if (autoPlayNonce <= 0) return;
     intendedPlayingRef.current = true;
     lastAutoplayNonceRef.current = 0;
+    endedHandledForPathRef.current = null;
   }, [autoPlayNonce]);
 
   useEffect(() => {
@@ -755,32 +760,10 @@ export function VaultPlayer({
       hls.on(Hls.Events.FRAG_BUFFERED, tryIntendedPlay);
     }
 
-    const onTime = () => setCurrentTime(media.currentTime);
-    const onDuration = () => {
-      markStreamPlayable();
-      const d = media.duration;
-      if (Number.isFinite(d)) setDuration(d);
-      if (softMediaErrorTimer) {
-        window.clearTimeout(softMediaErrorTimer);
-        softMediaErrorTimer = null;
-      }
-      clearStreamErrorForThisTrack();
-    };
-    const onPause = () => {
-      setPlaying(false);
-      onPlayingChangeRef.current?.(false);
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.playbackState = 'paused';
-      }
-    };
-    const onPlay = () => {
-      setPlaying(true);
-      onPlayingChangeRef.current?.(true);
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.playbackState = 'playing';
-      }
-    };
-    const onEnded = () => {
+    const handleQueueEnd = () => {
+      if (endedHandledForPathRef.current === track_path) return;
+      endedHandledForPathRef.current = track_path;
+
       const hasQueue = Boolean(
         resolveNextTrackRef.current || onPlaybackEndedRef.current,
       );
@@ -789,7 +772,6 @@ export function VaultPlayer({
           ? resolveNextTrackRef.current()
           : null;
 
-      // Locked / background tabs defer React — swap the stream synchronously.
       if (next?.track_path?.trim() && document.hidden) {
         intendedPlayingRef.current = true;
         applyLockScreenMetadata(next);
@@ -819,7 +801,56 @@ export function VaultPlayer({
       if (Number.isFinite(d) && d > 0) {
         setCurrentTime(d);
       }
-      onPlaybackEndedRef.current?.();
+
+      if (onPlaybackEndedRef.current) {
+        if (document.hidden) {
+          onPlaybackEndedRef.current();
+        } else {
+          flushSync(() => {
+            onPlaybackEndedRef.current?.();
+          });
+        }
+      }
+    };
+
+    const onTime = () => {
+      setCurrentTime(media.currentTime);
+      if (endedHandledForPathRef.current === track_path) return;
+      if (!resolveNextTrackRef.current && !onPlaybackEndedRef.current) return;
+      if (media.paused && !media.ended) return;
+      const d = media.duration;
+      if (!Number.isFinite(d) || d <= 0) return;
+      if (media.currentTime < d - 0.35) return;
+      if (media.ended || media.currentTime >= d - 0.15) {
+        handleQueueEnd();
+      }
+    };
+    const onDuration = () => {
+      markStreamPlayable();
+      const d = media.duration;
+      if (Number.isFinite(d)) setDuration(d);
+      if (softMediaErrorTimer) {
+        window.clearTimeout(softMediaErrorTimer);
+        softMediaErrorTimer = null;
+      }
+      clearStreamErrorForThisTrack();
+    };
+    const onPause = () => {
+      setPlaying(false);
+      onPlayingChangeRef.current?.(false);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
+    };
+    const onPlay = () => {
+      setPlaying(true);
+      onPlayingChangeRef.current?.(true);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+    };
+    const onEnded = () => {
+      handleQueueEnd();
     };
 
     media.addEventListener('timeupdate', onTime);
@@ -951,10 +982,21 @@ export function VaultPlayer({
     media.addEventListener('canplay', tryAutoplay);
     media.addEventListener('loadeddata', tryAutoplay);
     media.addEventListener('playing', onPlayingForAutoplay);
+
+    const hlsForAutoplay = hlsRef.current;
+    if (hlsForAutoplay) {
+      hlsForAutoplay.on(Hls.Events.MANIFEST_PARSED, tryAutoplay);
+      hlsForAutoplay.on(Hls.Events.FRAG_BUFFERED, tryAutoplay);
+    }
+
     return () => {
       media.removeEventListener('canplay', tryAutoplay);
       media.removeEventListener('loadeddata', tryAutoplay);
       media.removeEventListener('playing', onPlayingForAutoplay);
+      if (hlsForAutoplay) {
+        hlsForAutoplay.off(Hls.Events.MANIFEST_PARSED, tryAutoplay);
+        hlsForAutoplay.off(Hls.Events.FRAG_BUFFERED, tryAutoplay);
+      }
     };
   }, [autoPlayNonce, playUrl, track_path, playMedia]);
 
