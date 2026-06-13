@@ -455,6 +455,15 @@ export function VaultPlayer({
   const imperativeStreamPathRef = useRef<string | null>(null);
   /** `swapStreamToPath` owns playback until the new manifest buffers. */
   const queueSwapInFlightRef = useRef(false);
+  const finishQueueSwapRef = useRef<() => void>(() => {});
+  const [waveformAttachEpoch, setWaveformAttachEpoch] = useState(0);
+  const finishQueueSwap = useCallback(() => {
+    queueSwapInFlightRef.current = false;
+    setWaveformAttachEpoch((n) => n + 1);
+  }, []);
+  useEffect(() => {
+    finishQueueSwapRef.current = finishQueueSwap;
+  }, [finishQueueSwap]);
   useEffect(() => {
     onPlaybackEndedRef.current = onPlaybackEnded;
   }, [onPlaybackEnded]);
@@ -611,7 +620,7 @@ export function VaultPlayer({
         /* ignore */
       }
     };
-  }, [mediaReady, track_path, playUrl, waveformState, duration > 0]);
+  }, [mediaReady, track_path, playUrl, waveformState, duration > 0, waveformAttachEpoch]);
 
   /** HLS duration can drift after mount — update seek scale without recreating WaveSurfer. */
   useEffect(() => {
@@ -641,19 +650,22 @@ export function VaultPlayer({
 
     const startPlayback = () => {
       if (!intendedPlayingRef.current) {
-        queueSwapInFlightRef.current = false;
+        finishQueueSwapRef.current();
         return;
       }
       const el = mediaRef.current;
       if (!el) {
-        queueSwapInFlightRef.current = false;
+        finishQueueSwapRef.current();
         return;
       }
       restartMediaElement(el, hlsRef.current);
-      queueSwapInFlightRef.current = false;
+      finishQueueSwapRef.current();
     };
 
     queueSwapInFlightRef.current = autoPlay;
+    if (!autoPlay) {
+      finishQueueSwapRef.current();
+    }
 
     if (hls) {
       const onReady = () => {
@@ -947,6 +959,7 @@ export function VaultPlayer({
             onTrackAdvancedRef.current?.(next);
           });
         }
+        setWaveformAttachEpoch((n) => n + 1);
         if ('mediaSession' in navigator) {
           navigator.mediaSession.playbackState = 'paused';
         }
