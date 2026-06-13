@@ -1,8 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AlbumTracksPlayerClient } from '@/components/AlbumTracksPlayerClient';
-import { PlaybackControlsCard } from '@/components/PlaybackControlsCard';
+import { CatalogPlayer } from '@/components/CatalogPlayer';
 import { useTranslate } from '@/hooks/use-translate';
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
 
@@ -15,22 +14,13 @@ type Props = {
 
 export function AlbumPageClient({
   albumTitle,
-  albumSlug,
+  albumSlug: _albumSlug,
   coverUrl,
   tracks,
 }: Props) {
   const t = useTranslate();
   const [loopAlbum, setLoopAlbum] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackControlAction, setPlaybackControlAction] = useState<
-    'toggle' | 'stop'
-  >('toggle');
-  const [playbackControlNonce, setPlaybackControlNonce] = useState(0);
-
-  const runPlaybackControl = (action: 'toggle' | 'stop') => {
-    setPlaybackControlAction(action);
-    setPlaybackControlNonce((n) => n + 1);
-  };
+  const firstTrack = tracks[0] ?? null;
 
   return (
     <>
@@ -59,27 +49,19 @@ export function AlbumPageClient({
       </header>
 
       {tracks.length > 0 ? (
-        <>
-          <div className="mb-4 sm:mb-6">
-            <PlaybackControlsCard
-              isPlaying={isPlaying}
-              loopEnabled={loopAlbum}
-              onPlayPause={() => runPlaybackControl('toggle')}
-              onStop={() => runPlaybackControl('stop')}
-              onLoopChange={setLoopAlbum}
-            />
-          </div>
-          <AlbumTracksPlayerClient
-            albumSlug={albumSlug}
-            tracks={tracks}
-            loopAlbum={loopAlbum}
-            playbackControlAction={playbackControlAction}
-            playbackControlNonce={playbackControlNonce}
-            onPlayingChange={setIsPlaying}
-            isPlaying={isPlaying}
-            onPlaybackToggle={() => runPlaybackControl('toggle')}
-          />
-        </>
+        <CatalogPlayer
+          tracks={tracks}
+          defaultTrack={firstTrack}
+          queueEnabled={tracks.length > 1}
+          loop={loopAlbum}
+          onLoopChange={setLoopAlbum}
+          showTransportControls
+          headingIdle={t('badgeFromCollection')}
+          headingPlaying={t('badgeNowPlaying')}
+          listTracks={tracks}
+          listSectionTitle={t('sectionMoreTracks')}
+          listSectionId="album-more-tracks-heading"
+        />
       ) : (
         <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
           {t('albumEmptyTracks')}

@@ -20,6 +20,19 @@ export function dashboardTracksMatch(
   return a.slug === b.slug;
 }
 
+/** Index in a stable server-ordered list (catalog id, else slug). */
+export function indexOfCatalogTrack(
+  tracks: DashboardTrack[],
+  current: DashboardTrack,
+): number {
+  const id = current.catalog_track_id?.trim();
+  if (id) {
+    const byId = tracks.findIndex((t) => t.catalog_track_id === id);
+    if (byId >= 0) return byId;
+  }
+  return tracks.findIndex((t) => t.slug === current.slug);
+}
+
 const PICSUM_BG =
   'https://picsum.photos/seed/viyac-dashboard/1920/1080';
 

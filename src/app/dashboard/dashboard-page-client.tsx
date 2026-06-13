@@ -3,8 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useMemo, useState, useTransition } from 'react';
 import { dismissHomeIntroCard } from '@/actions/home-intro';
-import { DashboardFeaturedMarquee } from '@/components/DashboardFeaturedMarquee';
-import { DashboardMoreTrackRow } from '@/components/DashboardMoreTrackRow';
+import { CatalogPlayer } from '@/components/CatalogPlayer';
 import { CollectionCardBadge } from '@/components/CollectionCardBadge';
 import { useBrowserLanguage } from '@/hooks/use-browser-language';
 import { useTranslate } from '@/hooks/use-translate';
@@ -17,7 +16,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import type { DashboardAlbum } from '@/lib/catalog-from-supabase';
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
 import {
-  dashboardTracksMatch,
   getFeaturedDashboardTrackFromList,
   getHomeMoreTracksExcludingPlaying,
 } from '@/lib/dashboard-tracks';
@@ -30,19 +28,6 @@ type Props = {
   isSignedIn: boolean;
   userFirstName?: string | null;
 };
-
-function getTrackPosterUrl(track: DashboardTrack): string | null {
-  const source =
-    track.thumbnail_url?.trim() ||
-    track.lock_screen_art_path?.trim() ||
-    process.env.NEXT_PUBLIC_MEDIA_SESSION_ART_URL?.trim();
-  if (!source) return null;
-  try {
-    return resolvePublicAssetsUrl(source);
-  } catch {
-    return null;
-  }
-}
 
 function getAlbumCoverUrl(album: DashboardAlbum): string | null {
   const source =
@@ -63,47 +48,18 @@ export default function DashboardPageClient({
   isSignedIn,
   userFirstName,
 }: Props) {
-  const catalogFeatured = useMemo(
-    () => getFeaturedDashboardTrackFromList(tracks),
+  const homeTracks = useMemo(
+    () => getHomeMoreTracksExcludingPlaying(tracks, null),
     [tracks],
   );
-  const [sessionPlaying, setSessionPlaying] = useState<DashboardTrack | null>(
-    null,
+  const catalogFeatured = useMemo(
+    () => getFeaturedDashboardTrackFromList(homeTracks),
+    [homeTracks],
   );
-  const [autoPlayNonce, setAutoPlayNonce] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackControlAction, setPlaybackControlAction] = useState<
-    'toggle' | 'stop'
-  >('toggle');
-  const [playbackControlNonce, setPlaybackControlNonce] = useState(0);
+  const [loopHome, setLoopHome] = useState(false);
   const [introVisible, setIntroVisible] = useState(showIntroCard);
   const [dismissingIntro, startDismissingIntro] = useTransition();
-  const playerTrack = sessionPlaying ?? catalogFeatured;
-  const otherTracks = useMemo(
-    () => getHomeMoreTracksExcludingPlaying(tracks, playerTrack),
-    [tracks, playerTrack],
-  );
-  const showTrackListOrEmpty =
-    tracks.length === 0 || otherTracks.length > 0;
 
-  const playTrackInPlayer = useCallback((track: DashboardTrack) => {
-    setSessionPlaying(track);
-    setAutoPlayNonce((n) => n + 1);
-  }, []);
-  const togglePlayerPlayback = useCallback(() => {
-    setPlaybackControlAction('toggle');
-    setPlaybackControlNonce((n) => n + 1);
-  }, []);
-  const handleRowPlayback = useCallback(
-    (track: DashboardTrack) => {
-      if (playerTrack && dashboardTracksMatch(track, playerTrack)) {
-        togglePlayerPlayback();
-      } else {
-        playTrackInPlayer(track);
-      }
-    },
-    [playerTrack, togglePlayerPlayback, playTrackInPlayer],
-  );
   const dismissIntro = useCallback(() => {
     startDismissingIntro(async () => {
       const result = await dismissHomeIntroCard();
@@ -211,24 +167,24 @@ export default function DashboardPageClient({
         )
       ) : null}
 
-      {playerTrack ? (
-          <DashboardFeaturedMarquee
-            track={playerTrack}
-            headingLabel={
-              sessionPlaying != null ? t('badgeNowPlaying') : t('badgeFeatured')
-            }
-            autoPlayNonce={
-              sessionPlaying != null ? autoPlayNonce : 0
-            }
-            onPlayingChange={setIsPlaying}
-            playbackControlAction={playbackControlAction}
-            playbackControlNonce={playbackControlNonce}
-          />
+      {catalogFeatured ? (
+        <CatalogPlayer
+          tracks={homeTracks}
+          defaultTrack={catalogFeatured}
+          queueEnabled={homeTracks.length > 1}
+          gateAutoplayUntilPick
+          loop={loopHome}
+          onLoopChange={setLoopHome}
+          showTransportControls
+          headingIdle={t('badgeFeatured')}
+          headingPlaying={t('badgeNowPlaying')}
+          listTracks={homeTracks}
+          listSectionTitle={t('sectionMoreFeaturedTracks')}
+          listSectionId="more-featured-tracks-heading"
+        />
       ) : null}
 
-      {showTrackListOrEmpty ? (
-      <div className="space-y-10">
-      {tracks.length === 0 ? (
+      {homeTracks.length === 0 ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">No tracks yet</CardTitle>
@@ -259,38 +215,6 @@ export default function DashboardPageClient({
             </pre>
           </CardContent>
         </Card>
-      ) : null}
-
-      {otherTracks.length > 0 ? (
-        <section
-          className="min-w-0 space-y-4 overflow-x-hidden"
-          aria-labelledby="more-featured-tracks-heading"
-        >
-          <h2
-            id="more-featured-tracks-heading"
-            className="text-xl font-semibold tracking-tight"
-          >
-            {t('sectionMoreFeaturedTracks')}
-          </h2>
-          <ul className="grid min-w-0 gap-3 sm:grid-cols-2">
-            {otherTracks.map((track) => (
-              <li
-                key={track.catalog_track_id ?? track.slug}
-                className="min-w-0 max-w-full"
-              >
-                <DashboardMoreTrackRow
-                  track={track}
-                  posterUrl={getTrackPosterUrl(track)}
-                  isActive={
-                    playerTrack != null && dashboardTracksMatch(track, playerTrack)
-                  }
-                  isPlaying={isPlaying}
-                  onPlayInPlayer={() => handleRowPlayback(track)}
-                />
-              </li>
-            ))}
-          </ul>
-        </section>
       ) : null}
 
       {albums.length > 0 ? (
@@ -363,8 +287,6 @@ export default function DashboardPageClient({
             })}
           </ul>
         </section>
-      ) : null}
-      </div>
       ) : null}
       </div>
     </div>
