@@ -128,6 +128,23 @@ function prefersImperativeQueueAdvance(): boolean {
   );
 }
 
+function isCoarsePointer(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(pointer: coarse)').matches;
+}
+
+function computeWaveDuration(
+  mediaDuration: number,
+  waveformState: WaveformLoadState,
+): number {
+  const jsonDur =
+    isParsedWaveform(waveformState) && waveformState.duration > 0
+      ? waveformState.duration
+      : 0;
+  if (mediaDuration > 0) return mediaDuration;
+  return jsonDur;
+}
+
 function restartMediaElement(media: HTMLMediaElement, hls: Hls | null) {
   try {
     if (
@@ -419,6 +436,7 @@ export function VaultPlayer({
 
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
   const waveformContainerRef = useRef<HTMLDivElement | null>(null);
+  const waveSurferRef = useRef<WaveSurfer | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const recoveringRef = useRef(false);
   /** User chose play; kept true when the OS pauses on lock so we can try to resume on unlock. */
@@ -494,6 +512,9 @@ export function VaultPlayer({
       lastControlNonceRef.current = 0;
       setLyricsExpanded(false);
     }
+    if (wantsWaveformJson) {
+      setWaveformState('loading');
+    }
     // When the queue advances, `autoPlayNonce` is bumped in the same render as `track_path`.
     if (autoPlayNonce > 0) {
       intendedPlayingRef.current = true;
@@ -538,7 +559,13 @@ export function VaultPlayer({
   useEffect(() => {
     const container = waveformContainerRef.current;
     const media = mediaRef.current;
-    if (!container || !media || !mediaReady || waveformState === 'loading') {
+    if (
+      !container ||
+      !media ||
+      !mediaReady ||
+      waveformState === 'loading' ||
+      queueSwapInFlightRef.current
+    ) {
       return;
     }
     if (!Number.isFinite(duration) || duration <= 0) {
@@ -549,13 +576,14 @@ export function VaultPlayer({
     const peakChannels = useJson
       ? downsamplePeaksForDisplay(waveformState.peaks, WAVEFORM_DISPLAY_BINS)
       : [buildPlaceholderPeaks(WAVEFORM_DISPLAY_BINS)];
-    /** Prefer media duration: JSON peaks are often a few seconds short of the real HLS length. */
-    const jsonDur =
-      useJson && waveformState.duration > 0 ? waveformState.duration : 0;
-    const waveDuration = jsonDur > 0 ? Math.max(duration, jsonDur) : duration;
+    const waveDuration = computeWaveDuration(duration, waveformState);
+    if (waveDuration <= 0) return;
+
+    const touchScrub = isCoarsePointer();
 
     const ws = WaveSurfer.create({
       container,
+      media,
       backend: 'MediaElement',
       height: VAULT_WAVESURFER.height,
       waveColor: VAULT_WAVESURFER.waveColor,
@@ -565,40 +593,39 @@ export function VaultPlayer({
       peaks: peakChannels,
       duration: waveDuration,
       interact: true,
-      dragToSeek: { debounceTime: 0 },
+      dragToSeek: touchScrub ? false : { debounceTime: 0 },
       normalize: true,
       barHeight: VAULT_WAVESURFER.barHeight,
       fillParent: true,
     });
 
-    let cancelled = false;
-
-    const attachHlsMedia = () => {
-      if (cancelled) return;
-      try {
-        ws.setMediaElement(media);
-      } catch {
-        /* already wired */
-      }
-    };
-
-    ws.on('ready', attachHlsMedia, { once: true });
-    if (ws.getDecodedData()) {
-      queueMicrotask(attachHlsMedia);
-    }
+    waveSurferRef.current = ws;
 
     return () => {
-      cancelled = true;
-      ws.destroy();
+      if (waveSurferRef.current === ws) {
+        waveSurferRef.current = null;
+      }
+      try {
+        ws.destroy();
+      } catch {
+        /* ignore */
+      }
     };
-    // Use floored duration so HLS `durationchange` ticks do not destroy/recreate WaveSurfer mid-playback.
-  }, [
-    mediaReady,
-    duration > 0 ? Math.floor(duration) : 0,
-    track_path,
-    playUrl,
-    waveformState,
-  ]);
+  }, [mediaReady, track_path, playUrl, waveformState, duration > 0]);
+
+  /** HLS duration can drift after mount — update seek scale without recreating WaveSurfer. */
+  useEffect(() => {
+    const ws = waveSurferRef.current;
+    if (!ws || !Number.isFinite(duration) || duration <= 0) return;
+    if (waveformState === 'loading' || waveformState === 'error') return;
+    const waveDuration = computeWaveDuration(duration, waveformState);
+    if (waveDuration <= 0) return;
+    try {
+      ws.setOptions({ duration: waveDuration });
+    } catch {
+      /* ignore */
+    }
+  }, [duration, waveformState]);
 
   /** Background-tab / lock-screen — swaps HLS on the live element without waiting for React. */
   const swapStreamToPath = useCallback((path: string, autoPlay: boolean) => {
@@ -904,6 +931,15 @@ export function VaultPlayer({
         intendedPlayingRef.current = true;
         if (document.hidden) {
           applyLockScreenMetadata(next);
+        }
+        const ws = waveSurferRef.current;
+        if (ws) {
+          waveSurferRef.current = null;
+          try {
+            ws.destroy();
+          } catch {
+            /* ignore */
+          }
         }
         swapStreamToPathRef.current(next.track_path, true);
         if (onTrackAdvancedRef.current) {
@@ -1316,6 +1352,15 @@ export function VaultPlayer({
         intendedPlayingRef.current = true;
         if (document.hidden) {
           applyLockScreenMetadata(target);
+        }
+        const ws = waveSurferRef.current;
+        if (ws) {
+          waveSurferRef.current = null;
+          try {
+            ws.destroy();
+          } catch {
+            /* ignore */
+          }
         }
         swapStreamToPathRef.current(target.track_path, true);
         onTrackAdvancedRef.current?.(target);
