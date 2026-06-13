@@ -9,6 +9,8 @@ import { useAuthHref } from '@/hooks/use-auth-href';
 import { useCampaignHref } from '@/hooks/use-campaign-href';
 
 type NavbarProps = {
+  /** From server `auth()` — avoids signed-out flicker while Clerk hydrates. */
+  serverSignedIn?: boolean;
   showAdminLink?: boolean;
   favoritesCount?: number;
   sharedTracksCount?: number;
@@ -84,14 +86,16 @@ function SignedInNav({
 }
 
 function NavbarAuth({
+  serverSignedIn = false,
   showAdminLink = false,
   favoritesCount = 0,
   sharedTracksCount = 0,
 }: NavbarProps) {
   const { isLoaded, isSignedIn } = useAuth();
 
-  // Keep sign-in/up links tappable while Clerk loads (e.g. after viewport changes).
-  if (isLoaded && isSignedIn) {
+  const showSignedIn = isLoaded ? isSignedIn : serverSignedIn;
+
+  if (showSignedIn) {
     return (
       <SignedInNav
         showAdminLink={showAdminLink}
@@ -105,6 +109,7 @@ function NavbarAuth({
 }
 
 export function Navbar({
+  serverSignedIn = false,
   showAdminLink = false,
   favoritesCount = 0,
   sharedTracksCount = 0,
@@ -129,6 +134,7 @@ export function Navbar({
 
         <div className="flex min-h-9 shrink-0 items-center gap-4">
           <NavbarAuth
+            serverSignedIn={serverSignedIn}
             showAdminLink={showAdminLink}
             favoritesCount={favoritesCount}
             sharedTracksCount={sharedTracksCount}

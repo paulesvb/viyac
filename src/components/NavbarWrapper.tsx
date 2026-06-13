@@ -16,6 +16,7 @@ export async function NavbarWrapper() {
     userId && !isAdmin ? await fetchSharedTracksCountForViewer(userId) : 0;
   return (
     <Navbar
+      serverSignedIn={Boolean(userId)}
       showAdminLink={isAdmin}
       favoritesCount={favoritesCount}
       sharedTracksCount={sharedTracksCount}

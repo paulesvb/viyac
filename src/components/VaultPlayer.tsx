@@ -390,6 +390,8 @@ export function VaultPlayer({
   >(() => {});
   /** Prevents double queue advance when both `ended` and a near-end `timeupdate` fire. */
   const endedHandledForPathRef = useRef<string | null>(null);
+  /** Queue advance swapped HLS in-place — skip teardown/reload in the stream effect. */
+  const imperativeStreamPathRef = useRef<string | null>(null);
   useEffect(() => {
     onPlaybackEndedRef.current = onPlaybackEnded;
   }, [onPlaybackEnded]);
@@ -430,23 +432,30 @@ export function VaultPlayer({
 
   /** Client navigation can reuse this instance — reset so HLS/WaveSurfer do not keep stale metadata. */
   useEffect(() => {
+    const queueAdvancedInPlace = imperativeStreamPathRef.current === track_path;
     endedHandledForPathRef.current = null;
-    setReadyForPath(null);
-    setDuration(0);
-    setCurrentTime(0);
-    setPlaying(false);
+    if (queueAdvancedInPlace) {
+      setReadyForPath(track_path);
+    } else {
+      setReadyForPath(null);
+      setDuration(0);
+      setCurrentTime(0);
+      setPlaying(false);
+      setStreamError(null);
+      recoveringRef.current = false;
+      lastAutoplayNonceRef.current = 0;
+      lastControlNonceRef.current = 0;
+    }
     // When the queue advances, `autoPlayNonce` is bumped in the same render as `track_path`.
     if (autoPlayNonce > 0) {
       intendedPlayingRef.current = true;
-    } else {
+    } else if (!queueAdvancedInPlace) {
       intendedPlayingRef.current = false;
       onPlayingChangeRef.current?.(false);
     }
-    setStreamError(null);
-    recoveringRef.current = false;
-    setLyricsExpanded(false);
-    lastAutoplayNonceRef.current = 0;
-    lastControlNonceRef.current = 0;
+    if (!queueAdvancedInPlace) {
+      setLyricsExpanded(false);
+    }
     // `autoPlayNonce` intentionally omitted — repeat-one bumps nonce without changing path.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- read latest nonce only on path change
   }, [track_path]);
@@ -581,6 +590,8 @@ export function VaultPlayer({
       }
     }
 
+    imperativeStreamPathRef.current = path;
+
     if (autoPlay) {
       if (
         media.ended ||
@@ -618,13 +629,18 @@ export function VaultPlayer({
       }
     };
 
-    destroyHls();
-    media.pause();
-    media.removeAttribute('src');
-    try {
-      media.load();
-    } catch {
-      /* ignore */
+    const skipFullReload = imperativeStreamPathRef.current === track_path;
+    if (skipFullReload) {
+      imperativeStreamPathRef.current = null;
+    } else {
+      destroyHls();
+      media.pause();
+      media.removeAttribute('src');
+      try {
+        media.load();
+      } catch {
+        /* ignore */
+      }
     }
 
     /** Debounce MEDIA_ERR_DECODE / MEDIA_ERR_SRC_NOT_SUPPORTED — often transient with HLS. */
@@ -684,9 +700,10 @@ export function VaultPlayer({
       clearStreamErrorForThisTrack();
     };
 
-    if (media.canPlayType('application/vnd.apple.mpegurl')) {
-      media.src = playUrl;
-    } else if (Hls.isSupported()) {
+    if (!skipFullReload) {
+      if (media.canPlayType('application/vnd.apple.mpegurl')) {
+        media.src = playUrl;
+      } else if (Hls.isSupported()) {
       // Safari uses native HLS above; this path is Chrome/Firefox/Edge (MSE). Chrome is
       // much more reliable with the main-thread transmuxer — the worker + MSE path is a
       // common source of stalls and broken replay after `ended` on `<audio>`.
@@ -735,8 +752,9 @@ export function VaultPlayer({
       });
       hls.loadSource(playUrl);
       hls.attachMedia(media);
-    } else {
-      media.src = playUrl;
+      } else {
+        media.src = playUrl;
+      }
     }
 
     const markStreamPlayable = () => {
@@ -767,16 +785,39 @@ export function VaultPlayer({
       const hasQueue = Boolean(
         resolveNextTrackRef.current || onPlaybackEndedRef.current,
       );
-      const next =
-        document.hidden && resolveNextTrackRef.current
-          ? resolveNextTrackRef.current()
-          : null;
+      if (!hasQueue) {
+        intendedPlayingRef.current = false;
+        onPlayingChangeRef.current?.(false);
+        setPlaying(false);
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'none';
+        }
+        return;
+      }
 
-      if (next?.track_path?.trim() && document.hidden) {
+      const next = resolveNextTrackRef.current?.() ?? null;
+
+      if (next?.track_path?.trim() && next.track_path === track_path) {
         intendedPlayingRef.current = true;
-        applyLockScreenMetadata(next);
+        setPlaying(false);
+        flushSync(() => {
+          onPlaybackEndedRef.current?.();
+        });
+        return;
+      }
+
+      if (next?.track_path?.trim()) {
+        intendedPlayingRef.current = true;
+        setPlaying(false);
+        if (document.hidden) {
+          applyLockScreenMetadata(next);
+        }
         swapStreamToPathRef.current(next.track_path, true);
-        onTrackAdvancedRef.current?.(next);
+        if (onTrackAdvancedRef.current) {
+          flushSync(() => {
+            onTrackAdvancedRef.current?.(next);
+          });
+        }
         if ('mediaSession' in navigator) {
           navigator.mediaSession.playbackState = 'playing';
         }
@@ -787,29 +828,15 @@ export function VaultPlayer({
         return;
       }
 
-      if (hasQueue) {
-        intendedPlayingRef.current = true;
-      } else {
-        intendedPlayingRef.current = false;
-        onPlayingChangeRef.current?.(false);
-      }
+      intendedPlayingRef.current = false;
+      onPlayingChangeRef.current?.(false);
       setPlaying(false);
       if ('mediaSession' in navigator) {
-        navigator.mediaSession.playbackState = hasQueue ? 'paused' : 'none';
+        navigator.mediaSession.playbackState = 'none';
       }
       const d = media.duration;
       if (Number.isFinite(d) && d > 0) {
         setCurrentTime(d);
-      }
-
-      if (onPlaybackEndedRef.current) {
-        if (document.hidden) {
-          onPlaybackEndedRef.current();
-        } else {
-          flushSync(() => {
-            onPlaybackEndedRef.current?.();
-          });
-        }
       }
     };
 
@@ -892,10 +919,12 @@ export function VaultPlayer({
       media.removeEventListener('ended', onEnded);
       media.removeEventListener('playing', onPlaying);
       media.removeEventListener('error', onMediaError);
-      destroyHls();
-      media.pause();
-      media.removeAttribute('src');
-      media.load();
+      if (!imperativeStreamPathRef.current) {
+        destroyHls();
+        media.pause();
+        media.removeAttribute('src');
+        media.load();
+      }
     };
   }, [playUrl, hlsOnAudio, track_path]);
 
@@ -950,6 +979,7 @@ export function VaultPlayer({
 
   useEffect(() => {
     if (autoPlayNonce <= 0) return;
+    if (!mediaReady) return;
     if (lastAutoplayNonceRef.current >= autoPlayNonce) return;
     intendedPlayingRef.current = true;
 
@@ -998,7 +1028,7 @@ export function VaultPlayer({
         hlsForAutoplay.off(Hls.Events.FRAG_BUFFERED, tryAutoplay);
       }
     };
-  }, [autoPlayNonce, playUrl, track_path, playMedia]);
+  }, [autoPlayNonce, mediaReady, playUrl, track_path, playMedia]);
 
   useEffect(() => {
     if (playbackControlNonce <= 0 || !mediaReady) return;
