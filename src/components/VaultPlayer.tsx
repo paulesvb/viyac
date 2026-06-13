@@ -414,7 +414,9 @@ export function VaultPlayer({
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [readyForPath, setReadyForPath] = useState<string | null>(null);
-  const mediaReady = readyForPath === track_path;
+  const mediaReady =
+    readyForPath === track_path ||
+    imperativeStreamPathRef.current === track_path;
 
   useCatalogListenHeartbeat({
     catalogTrackId: catalog_track_id?.trim(),
@@ -445,6 +447,7 @@ export function VaultPlayer({
       recoveringRef.current = false;
       lastAutoplayNonceRef.current = 0;
       lastControlNonceRef.current = 0;
+      setLyricsExpanded(false);
     }
     // When the queue advances, `autoPlayNonce` is bumped in the same render as `track_path`.
     if (autoPlayNonce > 0) {
@@ -452,9 +455,6 @@ export function VaultPlayer({
     } else if (!queueAdvancedInPlace) {
       intendedPlayingRef.current = false;
       onPlayingChangeRef.current?.(false);
-    }
-    if (!queueAdvancedInPlace) {
-      setLyricsExpanded(false);
     }
     // `autoPlayNonce` intentionally omitted — repeat-one bumps nonce without changing path.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- read latest nonce only on path change
@@ -799,16 +799,14 @@ export function VaultPlayer({
 
       if (next?.track_path?.trim() && next.track_path === track_path) {
         intendedPlayingRef.current = true;
-        setPlaying(false);
         flushSync(() => {
           onPlaybackEndedRef.current?.();
         });
         return;
       }
 
-      if (next?.track_path?.trim()) {
+      if (next?.track_path?.trim() && next.track_path !== track_path) {
         intendedPlayingRef.current = true;
-        setPlaying(false);
         if (document.hidden) {
           applyLockScreenMetadata(next);
         }
@@ -828,15 +826,25 @@ export function VaultPlayer({
         return;
       }
 
-      intendedPlayingRef.current = false;
-      onPlayingChangeRef.current?.(false);
+      if (hasQueue) {
+        intendedPlayingRef.current = true;
+      } else {
+        intendedPlayingRef.current = false;
+        onPlayingChangeRef.current?.(false);
+      }
       setPlaying(false);
       if ('mediaSession' in navigator) {
-        navigator.mediaSession.playbackState = 'none';
+        navigator.mediaSession.playbackState = hasQueue ? 'paused' : 'none';
       }
       const d = media.duration;
       if (Number.isFinite(d) && d > 0) {
         setCurrentTime(d);
+      }
+
+      if (onPlaybackEndedRef.current) {
+        flushSync(() => {
+          onPlaybackEndedRef.current?.();
+        });
       }
     };
 
@@ -979,7 +987,6 @@ export function VaultPlayer({
 
   useEffect(() => {
     if (autoPlayNonce <= 0) return;
-    if (!mediaReady) return;
     if (lastAutoplayNonceRef.current >= autoPlayNonce) return;
     intendedPlayingRef.current = true;
 
@@ -1028,7 +1035,7 @@ export function VaultPlayer({
         hlsForAutoplay.off(Hls.Events.FRAG_BUFFERED, tryAutoplay);
       }
     };
-  }, [autoPlayNonce, mediaReady, playUrl, track_path, playMedia]);
+  }, [autoPlayNonce, playUrl, track_path, playMedia]);
 
   useEffect(() => {
     if (playbackControlNonce <= 0 || !mediaReady) return;
