@@ -555,7 +555,7 @@ export function VaultPlayer({
     waveformState,
   ]);
 
-  /** Background-tab / lock-screen only — swaps HLS on the live element without waiting for React. */
+  /** Background-tab / lock-screen — swaps HLS on the live element without waiting for React. */
   const swapStreamToPath = useCallback((path: string, autoPlay: boolean) => {
     const media = mediaRef.current;
     if (!media || !path.trim()) return;
@@ -567,7 +567,38 @@ export function VaultPlayer({
     const url = vaultStreamUrl(path);
     const hls = hlsRef.current;
 
+    const startPlayback = () => {
+      if (!intendedPlayingRef.current) return;
+      const el = mediaRef.current;
+      if (!el) return;
+      try {
+        if (
+          el.ended ||
+          (Number.isFinite(el.duration) &&
+            el.duration > 0 &&
+            el.currentTime >= el.duration - 0.25)
+        ) {
+          el.currentTime = 0;
+        }
+      } catch {
+        /* ignore */
+      }
+      void el.play().catch(() => {});
+    };
+
     if (hls) {
+      const onReady = () => {
+        hls.off(Hls.Events.MANIFEST_PARSED, onReady);
+        hls.off(Hls.Events.FRAG_BUFFERED, onBuffered);
+        if (autoPlay) startPlayback();
+      };
+      const onBuffered = () => {
+        hls.off(Hls.Events.MANIFEST_PARSED, onReady);
+        hls.off(Hls.Events.FRAG_BUFFERED, onBuffered);
+        if (autoPlay) startPlayback();
+      };
+      hls.on(Hls.Events.MANIFEST_PARSED, onReady);
+      hls.on(Hls.Events.FRAG_BUFFERED, onBuffered);
       try {
         hls.loadSource(url);
         hls.startLoad(0);
@@ -575,6 +606,11 @@ export function VaultPlayer({
         /* ignore */
       }
     } else if (media.canPlayType('application/vnd.apple.mpegurl')) {
+      const onNativeReady = () => {
+        media.removeEventListener('canplay', onNativeReady);
+        if (autoPlay) startPlayback();
+      };
+      media.addEventListener('canplay', onNativeReady);
       media.src = url;
       try {
         media.load();
@@ -582,6 +618,11 @@ export function VaultPlayer({
         /* ignore */
       }
     } else {
+      const onNativeReady = () => {
+        media.removeEventListener('canplay', onNativeReady);
+        if (autoPlay) startPlayback();
+      };
+      media.addEventListener('canplay', onNativeReady);
       media.src = url;
       try {
         media.load();
@@ -591,22 +632,6 @@ export function VaultPlayer({
     }
 
     imperativeStreamPathRef.current = path;
-
-    if (autoPlay) {
-      if (
-        media.ended ||
-        (Number.isFinite(media.duration) &&
-          media.duration > 0 &&
-          media.currentTime >= media.duration - 0.25)
-      ) {
-        try {
-          media.currentTime = 0;
-        } catch {
-          /* ignore */
-        }
-      }
-      void media.play().catch(() => {});
-    }
   }, []);
 
   useEffect(() => {
@@ -817,7 +842,7 @@ export function VaultPlayer({
           });
         }
         if ('mediaSession' in navigator) {
-          navigator.mediaSession.playbackState = 'playing';
+          navigator.mediaSession.playbackState = 'paused';
         }
         const d = media.duration;
         if (Number.isFinite(d) && d > 0) {
@@ -904,6 +929,9 @@ export function VaultPlayer({
       if (media.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
         onStreamProgress();
       } else if (intendedPlayingRef.current) {
+        tryIntendedPlay();
+      }
+      if (skipFullReload && intendedPlayingRef.current) {
         tryIntendedPlay();
       }
     });
@@ -1004,10 +1032,6 @@ export function VaultPlayer({
     const tryAutoplay = () => {
       if (lastAutoplayNonceRef.current >= targetNonce) return;
       if (!intendedPlayingRef.current) return;
-      if (!media.paused && !media.ended) {
-        markAutoplayDone();
-        return;
-      }
       playMedia();
     };
 

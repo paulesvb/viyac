@@ -161,7 +161,6 @@ export default function FavoritesTracksPageClient({ tracks }: Props) {
       setSessionPlayingId(id);
       setAutoPlayNonce((n) => n + 1);
     }
-    setIsPlaying(true);
   }, []);
 
   return (

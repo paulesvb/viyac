@@ -187,9 +187,8 @@ export function AlbumTracksPlayerClient({
         setSessionPlaying(match);
         setAutoPlayNonce((n) => n + 1);
       }
-      onPlayingChange?.(true);
     },
-    [findDashboardTrack, onPlayingChange],
+    [findDashboardTrack],
   );
 
   useEffect(() => {
