@@ -118,6 +118,49 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+/** Mobile blocks `play()` after full stream teardown — keep the live element on queue advance. */
+function prefersImperativeQueueAdvance(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (document.hidden) return true;
+  return (
+    window.matchMedia('(pointer: coarse)').matches ||
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+  );
+}
+
+function restartMediaElement(media: HTMLMediaElement, hls: Hls | null) {
+  try {
+    if (
+      media.ended ||
+      (Number.isFinite(media.duration) &&
+        media.duration > 0 &&
+        media.currentTime >= media.duration - 0.25)
+    ) {
+      media.currentTime = 0;
+    }
+  } catch {
+    /* ignore */
+  }
+  if (hls) {
+    try {
+      hls.startLoad(0);
+    } catch {
+      /* ignore */
+    }
+  }
+  const tryPlay = () => {
+    void media.play().catch(() => {});
+  };
+  tryPlay();
+  media.addEventListener(
+    'canplay',
+    () => {
+      if (media.paused && !media.ended) tryPlay();
+    },
+    { once: true },
+  );
+}
+
 function WaveformTimecode({
   currentTime,
   duration,
@@ -579,19 +622,7 @@ export function VaultPlayer({
         queueSwapInFlightRef.current = false;
         return;
       }
-      try {
-        if (
-          el.ended ||
-          (Number.isFinite(el.duration) &&
-            el.duration > 0 &&
-            el.currentTime >= el.duration - 0.25)
-        ) {
-          el.currentTime = 0;
-        }
-      } catch {
-        /* ignore */
-      }
-      void el.play().catch(() => {});
+      restartMediaElement(el, hlsRef.current);
       queueSwapInFlightRef.current = false;
     };
 
@@ -616,6 +647,9 @@ export function VaultPlayer({
       } catch {
         /* ignore */
       }
+      if (autoPlay) {
+        void media.play().catch(() => {});
+      }
     } else if (media.canPlayType('application/vnd.apple.mpegurl')) {
       const onNativeReady = () => {
         media.removeEventListener('canplay', onNativeReady);
@@ -628,6 +662,9 @@ export function VaultPlayer({
       } catch {
         /* ignore */
       }
+      if (autoPlay) {
+        void media.play().catch(() => {});
+      }
     } else {
       const onNativeReady = () => {
         media.removeEventListener('canplay', onNativeReady);
@@ -639,6 +676,9 @@ export function VaultPlayer({
         media.load();
       } catch {
         /* ignore */
+      }
+      if (autoPlay) {
+        void media.play().catch(() => {});
       }
     }
 
@@ -847,15 +887,24 @@ export function VaultPlayer({
 
       if (next?.track_path?.trim() && next.track_path === track_path) {
         intendedPlayingRef.current = true;
+        if (prefersImperativeQueueAdvance()) {
+          restartMediaElement(media, hlsRef.current);
+        }
         flushSync(() => {
           onPlaybackEndedRef.current?.();
         });
         return;
       }
 
-      if (next?.track_path?.trim() && next.track_path !== track_path && document.hidden) {
+      if (
+        next?.track_path?.trim() &&
+        next.track_path !== track_path &&
+        prefersImperativeQueueAdvance()
+      ) {
         intendedPlayingRef.current = true;
-        applyLockScreenMetadata(next);
+        if (document.hidden) {
+          applyLockScreenMetadata(next);
+        }
         swapStreamToPathRef.current(next.track_path, true);
         if (onTrackAdvancedRef.current) {
           flushSync(() => {
@@ -918,7 +967,9 @@ export function VaultPlayer({
     };
     const onPause = () => {
       setPlaying(false);
-      onPlayingChangeRef.current?.(false);
+      if (!queueSwapInFlightRef.current) {
+        onPlayingChangeRef.current?.(false);
+      }
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'paused';
       }
@@ -1261,9 +1312,11 @@ export function VaultPlayer({
 
     const advanceFromLockControl = (target: VaultTrackData | null | undefined) => {
       if (!target?.track_path?.trim()) return;
-      if (document.hidden) {
+      if (prefersImperativeQueueAdvance()) {
         intendedPlayingRef.current = true;
-        applyLockScreenMetadata(target);
+        if (document.hidden) {
+          applyLockScreenMetadata(target);
+        }
         swapStreamToPathRef.current(target.track_path, true);
         onTrackAdvancedRef.current?.(target);
         return;
