@@ -602,7 +602,7 @@ export function VaultPlayer({
       peaks: peakChannels,
       duration: waveDuration,
       interact: true,
-      dragToSeek: touchScrub ? false : { debounceTime: 0 },
+      dragToSeek: touchScrub ? { debounceTime: 80 } : { debounceTime: 0 },
       normalize: true,
       barHeight: VAULT_WAVESURFER.barHeight,
       fillParent: true,
@@ -1474,8 +1474,8 @@ export function VaultPlayer({
     : 'min-h-[100dvh]';
 
   const waveformShellClass = compactEmbedded
-    ? 'min-h-[72px] w-full overflow-hidden rounded-xl border border-[#00f2ff]/20 bg-black/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_28px_-8px_rgba(0,242,255,0.15)]'
-    : 'min-h-[96px] w-full overflow-hidden rounded-xl border border-[#00f2ff]/20 bg-black/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_28px_-8px_rgba(0,242,255,0.15)]';
+    ? 'min-h-[72px] w-full touch-none overflow-hidden rounded-xl border border-[#00f2ff]/20 bg-black/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_28px_-8px_rgba(0,242,255,0.15)]'
+    : 'min-h-[96px] w-full touch-none overflow-hidden rounded-xl border border-[#00f2ff]/20 bg-black/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_28px_-8px_rgba(0,242,255,0.15)]';
 
   const playBtnClass = `${PLAY_BTN_PREMIUM} flex shrink-0 items-center justify-center`;
   /** Keeps play/wave row from shifting when loading copy mounts/unmounts. */
