@@ -159,7 +159,6 @@ export default function FavoritesTracksPageClient({ tracks }: Props) {
         visibleRef.current.find((t) => t.catalog_track_id === id) ?? null;
       playerTrackRef.current = match;
       setSessionPlayingId(id);
-      setAutoPlayNonce((n) => n + 1);
     }
   }, []);
 

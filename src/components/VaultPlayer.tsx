@@ -392,6 +392,8 @@ export function VaultPlayer({
   const endedHandledForPathRef = useRef<string | null>(null);
   /** Queue advance swapped HLS in-place — skip teardown/reload in the stream effect. */
   const imperativeStreamPathRef = useRef<string | null>(null);
+  /** `swapStreamToPath` owns playback until the new manifest buffers. */
+  const queueSwapInFlightRef = useRef(false);
   useEffect(() => {
     onPlaybackEndedRef.current = onPlaybackEnded;
   }, [onPlaybackEnded]);
@@ -568,9 +570,15 @@ export function VaultPlayer({
     const hls = hlsRef.current;
 
     const startPlayback = () => {
-      if (!intendedPlayingRef.current) return;
+      if (!intendedPlayingRef.current) {
+        queueSwapInFlightRef.current = false;
+        return;
+      }
       const el = mediaRef.current;
-      if (!el) return;
+      if (!el) {
+        queueSwapInFlightRef.current = false;
+        return;
+      }
       try {
         if (
           el.ended ||
@@ -584,7 +592,10 @@ export function VaultPlayer({
         /* ignore */
       }
       void el.play().catch(() => {});
+      queueSwapInFlightRef.current = false;
     };
+
+    queueSwapInFlightRef.current = autoPlay;
 
     if (hls) {
       const onReady = () => {
@@ -789,6 +800,18 @@ export function VaultPlayer({
     const tryIntendedPlay = () => {
       if (!intendedPlayingRef.current) return;
       if (!media.paused && !media.ended) return;
+      try {
+        if (
+          media.ended ||
+          (Number.isFinite(media.duration) &&
+            media.duration > 0 &&
+            media.currentTime >= media.duration - 0.25)
+        ) {
+          media.currentTime = 0;
+        }
+      } catch {
+        /* ignore */
+      }
       void media.play().catch(() => {});
     };
 
@@ -830,11 +853,9 @@ export function VaultPlayer({
         return;
       }
 
-      if (next?.track_path?.trim() && next.track_path !== track_path) {
+      if (next?.track_path?.trim() && next.track_path !== track_path && document.hidden) {
         intendedPlayingRef.current = true;
-        if (document.hidden) {
-          applyLockScreenMetadata(next);
-        }
+        applyLockScreenMetadata(next);
         swapStreamToPathRef.current(next.track_path, true);
         if (onTrackAdvancedRef.current) {
           flushSync(() => {
@@ -967,7 +988,13 @@ export function VaultPlayer({
   const playMedia = useCallback(() => {
     const media = mediaRef.current;
     if (!media) return;
+    if (queueSwapInFlightRef.current) return;
     intendedPlayingRef.current = true;
+
+    const seekAndPlay = () => {
+      void media.play().catch(() => {});
+    };
+
     const d = media.duration;
     const nearEnd =
       Number.isFinite(d) && d > 0 && media.currentTime >= d - 0.25;
@@ -975,30 +1002,44 @@ export function VaultPlayer({
 
     if (atEnd) {
       const hls = hlsRef.current;
-      if (hls) {
+      const restart = () => {
         try {
-          hls.startLoad(0);
+          media.currentTime = 0;
         } catch {
           /* ignore */
         }
-      }
-      media.currentTime = 0;
-      const play = () => {
-        void media.play().catch(() => {});
+        seekAndPlay();
       };
+      if (hls) {
+        const onBuffered = () => {
+          hls.off(Hls.Events.FRAG_BUFFERED, onBuffered);
+          restart();
+        };
+        hls.on(Hls.Events.FRAG_BUFFERED, onBuffered);
+        if (media.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          hls.off(Hls.Events.FRAG_BUFFERED, onBuffered);
+          restart();
+        }
+        return;
+      }
+      try {
+        media.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
       const onSeeked = () => {
         clearTimeout(fallback);
-        play();
+        seekAndPlay();
       };
       media.addEventListener('seeked', onSeeked, { once: true });
       const fallback = window.setTimeout(() => {
         media.removeEventListener('seeked', onSeeked);
-        play();
+        seekAndPlay();
       }, 300);
       return;
     }
 
-    void media.play().catch(() => {});
+    seekAndPlay();
   }, []);
 
   const pauseMedia = useCallback((userInitiated = true) => {
@@ -1015,6 +1056,7 @@ export function VaultPlayer({
 
   useEffect(() => {
     if (autoPlayNonce <= 0) return;
+    if (queueSwapInFlightRef.current) return;
     if (lastAutoplayNonceRef.current >= autoPlayNonce) return;
     intendedPlayingRef.current = true;
 

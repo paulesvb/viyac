@@ -185,7 +185,6 @@ export function AlbumTracksPlayerClient({
       if (match) {
         playerTrackRef.current = match;
         setSessionPlaying(match);
-        setAutoPlayNonce((n) => n + 1);
       }
     },
     [findDashboardTrack],
