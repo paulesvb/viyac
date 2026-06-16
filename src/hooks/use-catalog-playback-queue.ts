@@ -94,12 +94,16 @@ export function useCatalogPlaybackQueue({
   const handleRowPlayback = useCallback(
     (track: DashboardTrack) => {
       if (playerTrack && dashboardTracksMatch(track, playerTrack)) {
+        if (gateAutoplayUntilPick && sessionTrack == null) {
+          playTrack(track);
+          return;
+        }
         runPlaybackControl('toggle');
       } else {
         playTrack(track);
       }
     },
-    [playerTrack, playTrack, runPlaybackControl],
+    [playerTrack, sessionTrack, gateAutoplayUntilPick, playTrack, runPlaybackControl],
   );
 
   const findDashboardTrack = useCallback(

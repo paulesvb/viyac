@@ -118,16 +118,7 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-/** Mobile blocks `play()` after full stream teardown — keep the live element on queue advance. */
-function prefersImperativeQueueAdvance(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (document.hidden) return true;
-  return (
-    window.matchMedia('(pointer: coarse)').matches ||
-    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
-  );
-}
-
+/** Touch devices block `play()` after full stream teardown — prefer in-place HLS swap. */
 function isCoarsePointer(): boolean {
   if (typeof window === 'undefined') return false;
   return window.matchMedia('(pointer: coarse)').matches;
@@ -460,6 +451,10 @@ export function VaultPlayer({
   const finishQueueSwap = useCallback(() => {
     queueSwapInFlightRef.current = false;
     setWaveformAttachEpoch((n) => n + 1);
+    if (!intendedPlayingRef.current) return;
+    const media = mediaRef.current;
+    if (!media || (!media.paused && !media.ended)) return;
+    restartMediaElement(media, hlsRef.current);
   }, []);
   useEffect(() => {
     finishQueueSwapRef.current = finishQueueSwap;
@@ -503,6 +498,14 @@ export function VaultPlayer({
 
   const lastAutoplayNonceRef = useRef(0);
   const lastControlNonceRef = useRef(0);
+  const lastAutoplayPlayUrlRef = useRef<string | null>(null);
+
+  /** Queue advance can change `playUrl` without bumping `autoPlayNonce` (in-place HLS swap). */
+  useEffect(() => {
+    if (lastAutoplayPlayUrlRef.current === playUrl) return;
+    lastAutoplayPlayUrlRef.current = playUrl;
+    lastAutoplayNonceRef.current = 0;
+  }, [playUrl]);
 
   /** Client navigation can reuse this instance — reset so HLS/WaveSurfer do not keep stale metadata. */
   useEffect(() => {
@@ -510,6 +513,7 @@ export function VaultPlayer({
     endedHandledForPathRef.current = null;
     if (queueAdvancedInPlace) {
       setReadyForPath(track_path);
+      lastAutoplayNonceRef.current = 0;
     } else {
       setReadyForPath(null);
       setDuration(0);
@@ -744,7 +748,9 @@ export function VaultPlayer({
       }
     };
 
-    const skipFullReload = imperativeStreamPathRef.current === track_path;
+    const skipFullReload =
+      imperativeStreamPathRef.current === track_path &&
+      Boolean(hlsRef.current || media.src?.trim());
     if (skipFullReload) {
       imperativeStreamPathRef.current = null;
     } else {
@@ -926,20 +932,14 @@ export function VaultPlayer({
 
       if (next?.track_path?.trim() && next.track_path === track_path) {
         intendedPlayingRef.current = true;
-        if (prefersImperativeQueueAdvance()) {
-          restartMediaElement(media, hlsRef.current);
-        }
+        restartMediaElement(media, hlsRef.current);
         flushSync(() => {
           onPlaybackEndedRef.current?.();
         });
         return;
       }
 
-      if (
-        next?.track_path?.trim() &&
-        next.track_path !== track_path &&
-        prefersImperativeQueueAdvance()
-      ) {
+      if (next?.track_path?.trim() && next.track_path !== track_path) {
         intendedPlayingRef.current = true;
         if (document.hidden) {
           applyLockScreenMetadata(next);
@@ -958,6 +958,10 @@ export function VaultPlayer({
           flushSync(() => {
             onTrackAdvancedRef.current?.(next);
           });
+        } else if (onPlaybackEndedRef.current) {
+          flushSync(() => {
+            onPlaybackEndedRef.current?.();
+          });
         }
         setWaveformAttachEpoch((n) => n + 1);
         if ('mediaSession' in navigator) {
@@ -970,15 +974,12 @@ export function VaultPlayer({
         return;
       }
 
-      if (hasQueue) {
-        intendedPlayingRef.current = true;
-      } else {
-        intendedPlayingRef.current = false;
-        onPlayingChangeRef.current?.(false);
-      }
+      // No resolvable next track — queue exhausted (no loop / end of list).
+      intendedPlayingRef.current = false;
+      onPlayingChangeRef.current?.(false);
       setPlaying(false);
       if ('mediaSession' in navigator) {
-        navigator.mediaSession.playbackState = hasQueue ? 'paused' : 'none';
+        navigator.mediaSession.playbackState = 'none';
       }
       const d = media.duration;
       if (Number.isFinite(d) && d > 0) {
@@ -1150,8 +1151,12 @@ export function VaultPlayer({
   const togglePlay = useCallback(() => {
     const media = mediaRef.current;
     if (!media) return;
-    if (media.paused) playMedia();
-    else pauseMedia();
+    if (media.paused) {
+      intendedPlayingRef.current = true;
+      playMedia();
+    } else {
+      pauseMedia();
+    }
   }, [playMedia, pauseMedia]);
 
   useEffect(() => {
@@ -1174,6 +1179,7 @@ export function VaultPlayer({
     const tryAutoplay = () => {
       if (lastAutoplayNonceRef.current >= targetNonce) return;
       if (!intendedPlayingRef.current) return;
+      if (queueSwapInFlightRef.current) return;
       playMedia();
     };
 
@@ -1206,6 +1212,9 @@ export function VaultPlayer({
   useEffect(() => {
     if (playbackControlNonce <= 0 || !mediaReady) return;
     if (lastControlNonceRef.current >= playbackControlNonce) return;
+    if (playbackControlAction !== 'toggle' && playbackControlAction !== 'stop') {
+      return;
+    }
     const media = mediaRef.current;
     if (!media) return;
     lastControlNonceRef.current = playbackControlNonce;
@@ -1361,25 +1370,30 @@ export function VaultPlayer({
 
     const advanceFromLockControl = (target: VaultTrackData | null | undefined) => {
       if (!target?.track_path?.trim()) return;
-      if (prefersImperativeQueueAdvance()) {
+      const media = mediaRef.current;
+      if (!media) return;
+
+      if (target.track_path === track_path) {
         intendedPlayingRef.current = true;
-        if (document.hidden) {
-          applyLockScreenMetadata(target);
-        }
-        const ws = waveSurferRef.current;
-        if (ws) {
-          waveSurferRef.current = null;
-          try {
-            ws.destroy();
-          } catch {
-            /* ignore */
-          }
-        }
-        swapStreamToPathRef.current(target.track_path, true);
+        restartMediaElement(media, hlsRef.current);
         onTrackAdvancedRef.current?.(target);
         return;
       }
+
       intendedPlayingRef.current = true;
+      if (document.hidden) {
+        applyLockScreenMetadata(target);
+      }
+      const ws = waveSurferRef.current;
+      if (ws) {
+        waveSurferRef.current = null;
+        try {
+          ws.destroy();
+        } catch {
+          /* ignore */
+        }
+      }
+      swapStreamToPathRef.current(target.track_path, true);
       onTrackAdvancedRef.current?.(target);
     };
 
@@ -1576,7 +1590,6 @@ export function VaultPlayer({
                 </div>
 
                 <audio
-                  key={`hls-audio-${track_path}`}
                   ref={(el) => {
                     mediaRef.current = el;
                   }}
@@ -1690,7 +1703,6 @@ export function VaultPlayer({
                   ) : null}
 
                   <audio
-                    key={`hls-audio-vinyl-${track_path}`}
                     ref={(el) => {
                       mediaRef.current = el;
                     }}
