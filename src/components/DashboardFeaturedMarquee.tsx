@@ -1,12 +1,12 @@
 'use client';
 
-import { useId } from 'react';
+import { useTranslate } from '@/hooks/use-translate';
+import { Repeat1 } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
 import { VaultPlayer, type VaultTrackData } from '@/components/VaultPlayer';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
 import { toVaultTrackData } from '@/lib/dashboard-tracks';
-import { useTranslate } from '@/hooks/use-translate';
 
 type Props = {
   track: DashboardTrack;
@@ -41,8 +41,8 @@ export function DashboardFeaturedMarquee({
   repeatOneEnabled,
   onRepeatOneChange,
 }: Props) {
-  const repeatHeaderId = useId();
   const t = useTranslate();
+  const repeatOn = Boolean(repeatOneEnabled);
 
   return (
     <section
@@ -60,20 +60,21 @@ export function DashboardFeaturedMarquee({
             </span>
           </div>
           {onRepeatOneChange ? (
-            <div className="flex shrink-0 items-center gap-2">
-              <Switch
-                id={repeatHeaderId}
-                checked={Boolean(repeatOneEnabled)}
-                onCheckedChange={onRepeatOneChange}
-                className="data-[state=checked]:bg-cyan-500 data-[state=unchecked]:bg-zinc-700 focus-visible:ring-cyan-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
-              />
-              <Label
-                htmlFor={repeatHeaderId}
-                className="cursor-pointer whitespace-nowrap text-xs font-normal text-zinc-300"
-              >
-                {t('ctaRepeat')}
-              </Label>
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onRepeatOneChange(!repeatOn)}
+              aria-label={t('ctaRepeat')}
+              aria-pressed={repeatOn}
+              className={
+                repeatOn
+                  ? 'shrink-0 border-[#00f2ff] text-[#00f2ff] hover:border-[#00f2ff] hover:text-[#00f2ff] dark:border-[#00f2ff] dark:text-[#00f2ff] dark:hover:border-[#00f2ff] dark:hover:text-[#00f2ff]'
+                  : 'shrink-0'
+              }
+            >
+              <Repeat1 aria-hidden />
+            </Button>
           ) : null}
         </div>
       </div>
