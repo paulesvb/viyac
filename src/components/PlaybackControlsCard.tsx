@@ -2,10 +2,8 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { useTranslate } from '@/hooks/use-translate';
-import { Pause, Play, SkipBack, SkipForward, Square } from 'lucide-react';
+import { Pause, Play, Repeat, SkipBack, SkipForward, Square } from 'lucide-react';
 
 type Props = {
   isPlaying: boolean;
@@ -87,17 +85,22 @@ export function PlaybackControlsCard({
             <span className="hidden sm:inline">{t('ctaNext')}</span>
           </Button>
         ) : null}
-        <div className="ml-auto flex shrink-0 items-center gap-2 pl-1">
-          <Switch
-            id="queue_loop"
-            checked={loopEnabled}
-            onCheckedChange={onLoopChange}
-            disabled={disabled}
-          />
-          <Label htmlFor="queue_loop" className="text-sm font-normal whitespace-nowrap">
-            {t('ctaLoop')}
-          </Label>
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onLoopChange(!loopEnabled)}
+          disabled={disabled}
+          aria-label={t('ctaLoop')}
+          aria-pressed={loopEnabled}
+          className={
+            loopEnabled
+              ? 'shrink-0 border-[#00f2ff] text-[#00f2ff] hover:border-[#00f2ff] hover:text-[#00f2ff] dark:border-[#00f2ff] dark:text-[#00f2ff] dark:hover:border-[#00f2ff] dark:hover:text-[#00f2ff]'
+              : 'shrink-0'
+          }
+        >
+          <Repeat aria-hidden />
+        </Button>
       </CardContent>
     </Card>
   );
