@@ -7,6 +7,7 @@ import { VaultPlayer } from '@/components/VaultPlayer';
 import { isCatalogTrackId } from '@/lib/catalog-track-id';
 import { resolveTrackForMusicPage } from '@/lib/catalog-from-supabase';
 import { toVaultTrackData } from '@/lib/dashboard-tracks';
+import { isAnonymousCollectionAccessEnabled } from '@/lib/feature-flags';
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -18,8 +19,11 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const { userId } = await auth();
-  if (!userId) return { title: 'Music' };
-  const track = await resolveTrackForMusicPage(userId, slug);
+  const track = userId
+    ? await resolveTrackForMusicPage(userId, slug)
+    : (await isAnonymousCollectionAccessEnabled())
+      ? await resolveTrackForMusicPage(null, slug)
+      : null;
   if (!track) return { title: 'Track' };
   return { title: `${track.title} | Music` };
 }
@@ -28,12 +32,20 @@ export default async function MusicTrackPage({ params, searchParams }: PageProps
   const { slug } = await params;
   const { album } = await searchParams;
   const { userId } = await auth();
-  if (!userId) {
+  const anonymousCollections = !userId
+    ? await isAnonymousCollectionAccessEnabled()
+    : false;
+  if (!userId && !anonymousCollections) {
     redirect(
       `/login?redirect_url=${encodeURIComponent(`/music/tracks/${slug}`)}`,
     );
   }
   const track = await resolveTrackForMusicPage(userId, slug);
+  if (!userId && !track) {
+    redirect(
+      `/login?redirect_url=${encodeURIComponent(`/music/tracks/${slug}`)}`,
+    );
+  }
   if (!track) notFound();
 
   const vaultData = toVaultTrackData(track);

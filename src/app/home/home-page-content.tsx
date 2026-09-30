@@ -9,6 +9,7 @@ import {
   fetchPublicDashboardAlbumsFromCatalog,
 } from '@/lib/catalog-from-supabase';
 import { getDashboardTracks } from '@/lib/dashboard-tracks';
+import { isAnonymousCollectionAccessEnabled } from '@/lib/feature-flags';
 import {
   HOME_INTRO_DISMISSED_COOKIE,
   isHomeIntroDismissedInCookie,
@@ -46,6 +47,9 @@ export async function HomePageContent() {
   }
 
   const userFirstName = userId ? (await currentUser())?.firstName ?? null : null;
+  const anonymousCollectionAccess = userId
+    ? false
+    : await isAnonymousCollectionAccessEnabled();
 
   return (
     <DashboardPageClient
@@ -53,6 +57,7 @@ export async function HomePageContent() {
       albums={albums}
       showIntroCard={showIntroCard}
       isSignedIn={userId != null}
+      anonymousCollectionAccess={anonymousCollectionAccess}
       userFirstName={userFirstName}
     />
   );

@@ -1,4 +1,5 @@
 import { isPlatformAdmin } from '@/lib/admin-access';
+import { isAnonymousCollectionAccessEnabled } from '@/lib/feature-flags';
 import type { createServiceCatalog } from '@/lib/supabase-catalog';
 import type { CatalogTrackRow } from '@/lib/catalog-types';
 import { catalogTrackHasViewerGrant } from '@/lib/track-viewer-grants';
@@ -167,6 +168,55 @@ function vaultBundleContainsPath(
   return false;
 }
 
+function trackIsOnPublicCollection(
+  trackId: string,
+  trackToAlbums: Map<string, string[]>,
+  publicAlbumIds: Set<string>,
+): boolean {
+  const aids = trackToAlbums.get(trackId) ?? [];
+  return aids.some((id) => publicAlbumIds.has(id));
+}
+
+/**
+ * Track is linked to a public or unlisted collection. Does not require
+ * `anonymous_visible`. Callers must also check the feature flag.
+ */
+export async function getCatalogTrackIfOnPublicCollection(
+  supabase: CatalogServiceClient,
+  trackId: string,
+): Promise<CatalogTrackRow | null> {
+  const { data: track, error: trackError } = await supabase
+    .from('tracks')
+    .select('*')
+    .eq('id', trackId)
+    .maybeSingle();
+
+  if (trackError || !track) return null;
+
+  const row = track as CatalogTrackRow;
+  const { trackToAlbums, publicAlbumIds } = await loadTrackAlbumVisibilityContext(
+    supabase,
+    [row.id],
+  );
+  return trackIsOnPublicCollection(row.id, trackToAlbums, publicAlbumIds)
+    ? row
+    : null;
+}
+
+/**
+ * Signed-out playback: existing preview rules, plus every track on a public or
+ * unlisted collection when `anonymous_collection_access` is enabled.
+ */
+export async function getCatalogTrackForSignedOutPlayback(
+  supabase: CatalogServiceClient,
+  trackId: string,
+): Promise<CatalogTrackRow | null> {
+  const preview = await getCatalogTrackIfAnonymousAccessible(supabase, trackId);
+  if (preview) return preview;
+  if (!(await isAnonymousCollectionAccessEnabled())) return null;
+  return getCatalogTrackIfOnPublicCollection(supabase, trackId);
+}
+
 function trackIsWorldReadableForAnonymous(
   row: CatalogTrackRow,
   trackToAlbums: Map<string, string[]>,
@@ -303,9 +353,19 @@ export async function vaultPathAllowedForAnonymous(
     candidateRows.map((r) => r.id),
   );
 
-  return candidateRows.some((row) =>
-    isTrackAnonymousStreamable(row, trackToAlbums, publicAlbumIds),
+  if (
+    candidateRows.some((row) =>
+      isTrackAnonymousStreamable(row, trackToAlbums, publicAlbumIds),
+    )
+  ) {
+    return true;
+  }
+
+  const onPublicCollection = candidateRows.some((row) =>
+    trackIsOnPublicCollection(row.id, trackToAlbums, publicAlbumIds),
   );
+  if (!onPublicCollection) return false;
+  return isAnonymousCollectionAccessEnabled();
 }
 
 /**

@@ -26,6 +26,8 @@ type Props = {
   albums: DashboardAlbum[];
   showIntroCard: boolean;
   isSignedIn: boolean;
+  /** When true, collection cards open the collection instead of login. */
+  anonymousCollectionAccess?: boolean;
   userFirstName?: string | null;
 };
 
@@ -46,6 +48,7 @@ export default function DashboardPageClient({
   albums,
   showIntroCard,
   isSignedIn,
+  anonymousCollectionAccess = false,
   userFirstName,
 }: Props) {
   const homeTracks = useMemo(
@@ -237,7 +240,7 @@ export default function DashboardPageClient({
                 <li key={album.id}>
                   <div className="overflow-hidden rounded-lg border border-border bg-card">
                     <Link
-                      href={collectionHref(album.slug, isSignedIn)}
+                      href={collectionHref(album.slug, isSignedIn || anonymousCollectionAccess)}
                       className="group relative block overflow-hidden"
                     >
                       {coverUrl ? (
@@ -276,7 +279,7 @@ export default function DashboardPageClient({
                         asChild
                         className="shrink-0 rounded-full"
                       >
-                        <Link href={collectionHref(album.slug, isSignedIn)}>
+                        <Link href={collectionHref(album.slug, isSignedIn || anonymousCollectionAccess)}>
                           {t('ctaPlayNow')}
                         </Link>
                       </Button>

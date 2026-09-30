@@ -2,7 +2,11 @@ import type { Metadata } from 'next';
 import { auth } from '@clerk/nextjs/server';
 
 import { AlbumPageContent } from '@/app/music/collections/album-page-content';
-import { getAccessibleAlbumWithTracksBySlug } from '@/lib/catalog-from-supabase';
+import {
+  getAccessibleAlbumWithTracksBySlug,
+  getPublicCollectionWithTracksBySlug,
+} from '@/lib/catalog-from-supabase';
+import { isAnonymousCollectionAccessEnabled } from '@/lib/feature-flags';
 import { translate } from '@/lib/i18n';
 
 type PageProps = {
@@ -15,8 +19,11 @@ export async function generateMetadata({
   const { slug } = await params;
   const { userId } = await auth();
   const fallback = translate('en', 'labelCollection');
-  if (!userId) return { title: fallback };
-  const data = await getAccessibleAlbumWithTracksBySlug(userId, slug);
+  const data = userId
+    ? await getAccessibleAlbumWithTracksBySlug(userId, slug)
+    : (await isAnonymousCollectionAccessEnabled())
+      ? await getPublicCollectionWithTracksBySlug(slug)
+      : null;
   if (!data) return { title: fallback };
   const collections = translate('en', 'navCollections');
   return { title: `${data.album.title} | ${collections}` };

@@ -4,8 +4,8 @@ import { NextResponse } from 'next/server';
 const isProtectedRoute = createRouteMatcher([
   '/dashboard(.*)',
   '/admin(.*)',
-  // /home: public preview for anonymous; albums and full catalog need sign-in in pages.
-  // /music: track pages can be public for anonymous_visible tracks; pages enforce access.
+  // /home: public preview for anonymous visitors.
+  // /music: pages enforce access. Public collections open when api.feature_flags.anonymous_collection_access is on.
   '/profile(.*)',
   '/settings(.*)',
 ]);

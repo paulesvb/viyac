@@ -3,7 +3,11 @@ import { notFound, redirect } from 'next/navigation';
 
 import { AlbumPageClient } from '@/components/AlbumPageClient';
 import { HomeBackLink } from '@/components/HomeBackLink';
-import { getAccessibleAlbumWithTracksBySlug } from '@/lib/catalog-from-supabase';
+import {
+  getAccessibleAlbumWithTracksBySlug,
+  getPublicCollectionWithTracksBySlug,
+} from '@/lib/catalog-from-supabase';
+import { isAnonymousCollectionAccessEnabled } from '@/lib/feature-flags';
 import { getCollectionPath, getLoginPath } from '@/lib/ui-language';
 import { resolvePublicAssetsUrl } from '@/lib/storage';
 
@@ -17,7 +21,8 @@ export async function AlbumPageContent({
   pathnameForRedirect,
 }: Props) {
   const { userId } = await auth();
-  if (!userId) {
+  const anonymousCollections = await isAnonymousCollectionAccessEnabled();
+  if (!userId && !anonymousCollections) {
     redirect(
       `${getLoginPath(pathnameForRedirect)}?redirect_url=${encodeURIComponent(
         getCollectionPath(pathnameForRedirect, slug),
@@ -25,7 +30,9 @@ export async function AlbumPageContent({
     );
   }
 
-  const data = await getAccessibleAlbumWithTracksBySlug(userId, slug);
+  const data = userId
+    ? await getAccessibleAlbumWithTracksBySlug(userId, slug)
+    : await getPublicCollectionWithTracksBySlug(slug);
   if (!data) notFound();
 
   const { album, tracks } = data;

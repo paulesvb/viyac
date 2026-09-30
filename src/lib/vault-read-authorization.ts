@@ -24,7 +24,7 @@ function dashboardStaticVaultAllows(objectPath: string): boolean {
   return false;
 }
 
-/** Signed-in: catalog access or dashboard env paths. Signed-out: anonymous_visible preview tracks only. */
+/** Signed-in: catalog access or dashboard env paths. Signed-out: preview tracks, or public-collection tracks when the feature flag is on. */
 export async function vaultReadAllowed(
   userId: string | null | undefined,
   objectPath: string,

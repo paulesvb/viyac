@@ -10,7 +10,7 @@ import type { CatalogAlbumRow, CatalogTrackRow } from '@/lib/catalog-types';
 import { isMasteringProvenance } from '@/lib/catalog-types';
 import {
   getCatalogTrackIfAccessible,
-  getCatalogTrackIfAnonymousAccessible,
+  getCatalogTrackForSignedOutPlayback,
   listAnonymousAccessibleCatalogTrackRows,
 } from '@/lib/catalog-track-access';
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
@@ -616,7 +616,8 @@ export async function fetchFavoriteTracksFromCatalog(
 }
 
 /**
- * Public/unlisted albums for anonymous Home teasers (cover + metadata; playback requires sign-in).
+ * Public/unlisted albums for anonymous Home teasers (cover + metadata).
+ * Playback of the collection follows `api.feature_flags.anonymous_collection_access`.
  */
 export async function fetchPublicDashboardAlbumsFromCatalog(): Promise<
   DashboardAlbum[]
@@ -756,6 +757,45 @@ export async function getAccessibleAlbumWithTracksBySlug(
   return { album: a, tracks };
 }
 
+/**
+ * Public or unlisted collection for signed-out visitors. Every linked track is included.
+ * Returns null when the album is missing or private.
+ */
+export async function getPublicCollectionWithTracksBySlug(
+  slug: string,
+): Promise<AlbumWithTracks | null> {
+  const supabase = createServiceCatalog();
+  const decoded = decodeURIComponent(slug);
+  const { data: album, error } = await supabase
+    .from('albums')
+    .select('*')
+    .eq('slug', decoded)
+    .maybeSingle();
+
+  if (error || !album) return null;
+  const a = album as CatalogAlbumRow;
+  if (a.visibility !== 'public' && a.visibility !== 'unlisted') return null;
+
+  const { data: rows } = await supabase
+    .from('album_tracks')
+    .select('track_id, sort_order, tracks (*)')
+    .eq('album_id', a.id)
+    .order('sort_order', { ascending: true });
+
+  const tracks: DashboardTrack[] = [];
+  for (const r of (rows ?? []) as AlbumTrackJoinRow[]) {
+    const joined = joinTrack(r.tracks);
+    if (!joined) continue;
+    const base = catalogRowToDashboardTrack(joined, false, {
+      is_single: false,
+      album_title: a.title,
+    });
+    tracks.push(await withCoverOriginalLink(supabase, null, joined, base));
+  }
+
+  return { album: a, tracks };
+}
+
 async function withCoverOriginalLink(
   supabase: ReturnType<typeof createServiceCatalog>,
   userId: string | null,
@@ -768,7 +808,7 @@ async function withCoverOriginalLink(
   const originalId = allowed.original_track_id.trim();
   const original = userId
     ? await getCatalogTrackIfAccessible(supabase, userId, originalId)
-    : await getCatalogTrackIfAnonymousAccessible(supabase, originalId);
+    : await getCatalogTrackForSignedOutPlayback(supabase, originalId);
   if (!original) {
     return { ...base, is_cover: true as const };
   }
@@ -832,7 +872,7 @@ export async function resolveTrackForMusicPage(
 
     if (!error && candidates?.length) {
       for (const row of candidates as CatalogTrackRow[]) {
-        const allowed = await getCatalogTrackIfAnonymousAccessible(
+        const allowed = await getCatalogTrackForSignedOutPlayback(
           supabase,
           row.id,
         );
