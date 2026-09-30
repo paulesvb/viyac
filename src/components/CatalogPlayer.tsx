@@ -19,8 +19,10 @@ type Props = {
   gateAutoplayUntilPick?: boolean;
   loop?: boolean;
   onLoopChange?: (enabled: boolean) => void;
-  /** External transport card above the player. */
+  /** External transport card. Home places it under the player. */
   showTransportControls?: boolean;
+  /** When true, the transport card renders under the player instead of above it. */
+  transportControlsBelow?: boolean;
   /** Marquee pill when idle / after user pick. */
   headingIdle: string;
   headingPlaying: string;
@@ -45,6 +47,7 @@ export function CatalogPlayer({
   loop = false,
   onLoopChange,
   showTransportControls = false,
+  transportControlsBelow = false,
   headingIdle,
   headingPlaying,
   listTracks,
@@ -108,19 +111,21 @@ export function CatalogPlayer({
   const showTrackList =
     rows.length > 0 && (listTracks !== undefined || Boolean(listSectionTitle));
 
+  const transportControls = showTransportControls ? (
+    <PlaybackControlsCard
+      isPlaying={playing}
+      loopEnabled={loop}
+      onPrevious={queueEnabled ? skipToPrevious : undefined}
+      onNext={queueEnabled ? skipToNext : undefined}
+      onPlayPause={() => runPlaybackControl('toggle')}
+      onStop={() => runPlaybackControl('stop')}
+      onLoopChange={onLoopChange ?? (() => {})}
+    />
+  ) : null;
+
   return (
     <div className={className ?? 'space-y-8'}>
-      {showTransportControls ? (
-        <PlaybackControlsCard
-          isPlaying={playing}
-          loopEnabled={loop}
-          onPrevious={queueEnabled ? skipToPrevious : undefined}
-          onNext={queueEnabled ? skipToNext : undefined}
-          onPlayPause={() => runPlaybackControl('toggle')}
-          onStop={() => runPlaybackControl('stop')}
-          onLoopChange={onLoopChange ?? (() => {})}
-        />
-      ) : null}
+      {transportControlsBelow ? null : transportControls}
 
       <div className="w-full min-w-0 sm:flex-1">
         <DashboardFeaturedMarquee
@@ -135,6 +140,8 @@ export function CatalogPlayer({
           onRepeatOneChange={queueEnabled ? setRepeatOne : undefined}
         />
       </div>
+
+      {transportControlsBelow ? transportControls : null}
 
       {showTrackList ? (
         <section

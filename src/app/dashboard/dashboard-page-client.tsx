@@ -179,6 +179,7 @@ export default function DashboardPageClient({
           loop={loopHome}
           onLoopChange={setLoopHome}
           showTransportControls
+          transportControlsBelow
           headingIdle={t('badgeFeatured')}
           headingPlaying={t('badgeNowPlaying')}
           listTracks={homeTracks}

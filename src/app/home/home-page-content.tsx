@@ -31,6 +31,10 @@ export async function HomePageContent() {
     tracks = getDashboardTracks();
   }
 
+  const anonymousCollectionAccess = userId
+    ? false
+    : await isAnonymousCollectionAccessEnabled();
+
   if (userId) {
     const supabase = createServiceSupabase();
     const { data } = await supabase
@@ -39,7 +43,7 @@ export async function HomePageContent() {
       .eq('id', userId)
       .maybeSingle();
     showIntroCard = data?.home_intro_dismissed !== true;
-  } else {
+  } else if (!anonymousCollectionAccess) {
     const jar = await cookies();
     showIntroCard = !isHomeIntroDismissedInCookie(
       jar.get(HOME_INTRO_DISMISSED_COOKIE)?.value,
@@ -47,9 +51,6 @@ export async function HomePageContent() {
   }
 
   const userFirstName = userId ? (await currentUser())?.firstName ?? null : null;
-  const anonymousCollectionAccess = userId
-    ? false
-    : await isAnonymousCollectionAccessEnabled();
 
   return (
     <DashboardPageClient
