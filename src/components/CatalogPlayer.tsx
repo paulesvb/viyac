@@ -69,7 +69,8 @@ export function CatalogPlayer({
   const playback = usePlayback();
   const session = playback.session;
   const ownsQueue = session != null && samePlaybackQueue(session.tracks, tracks);
-  const current = ownsQueue ? (session.tracks[session.index] ?? null) : null;
+  const sessionTrack = session ? (session.tracks[session.index] ?? null) : null;
+  const current = ownsQueue ? sessionTrack : null;
   const stageTrack = current ?? (session ? null : defaultTrack);
   const playingHere = ownsQueue && playback.playing;
   const loopEnabled = ownsQueue && session ? session.loop : loop;
@@ -84,7 +85,7 @@ export function CatalogPlayer({
   };
 
   const handleRowClick = (track: DashboardTrack) => {
-    if (ownsQueue && current && dashboardTracksMatch(track, current)) {
+    if (sessionTrack && dashboardTracksMatch(track, sessionTrack)) {
       if (onPlaybackToggle) onPlaybackToggle();
       else playback.toggle();
       return;
@@ -179,9 +180,14 @@ export function CatalogPlayer({
                   track={track}
                   posterUrl={getTrackPosterUrl(track)}
                   isActive={
-                    current != null && dashboardTracksMatch(track, current)
+                    sessionTrack != null &&
+                    dashboardTracksMatch(track, sessionTrack)
                   }
-                  isPlaying={playingHere}
+                  isPlaying={
+                    playback.playing &&
+                    sessionTrack != null &&
+                    dashboardTracksMatch(track, sessionTrack)
+                  }
                   onPlayInPlayer={() => handleRowClick(track)}
                 />
               </li>
