@@ -12,7 +12,9 @@ import {
   type ReactNode,
 } from 'react';
 
-import { Repeat } from 'lucide-react';
+import { Pause, Play, SkipForward } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
 
 import { PersistentPlayerSheet } from '@/components/persistent-playback/PersistentPlayerSheet';
 import { useCatalogListenHeartbeat } from '@/hooks/use-catalog-listen-heartbeat';
@@ -529,7 +531,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!session) return;
     const previous = document.body.style.paddingBottom;
-    document.body.style.paddingBottom = '5rem';
+    document.body.style.paddingBottom =
+      'calc(5.25rem + env(safe-area-inset-bottom))';
     return () => {
       document.body.style.paddingBottom = previous;
     };
@@ -590,30 +593,21 @@ function PersistentPlayerBar() {
   const track = trackAt(playback.session);
   if (!playback.session || !track) return null;
 
-  const progress =
-    playback.duration > 0
-      ? Math.min(1, playback.currentTime / playback.duration)
-      : 0;
   const poster = getTrackPosterUrl(track);
   const canSkip = playback.session.queueEnabled;
-  const loopOn = playback.session.loop;
+  const collectionName =
+    track.is_single === false ? track.album_title?.trim() || null : null;
 
   return (
     <>
       {expanded ? (
         <PersistentPlayerSheet track={track} onClose={() => setExpanded(false)} />
       ) : null}
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-cyan-500/20 bg-zinc-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-        <div className="h-0.5 bg-white/10">
-          <div
-            className="h-full bg-[#00f2ff]"
-            style={{ width: `${progress * 100}%` }}
-          />
-        </div>
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-3 sm:px-4">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
+        <div className="pointer-events-auto mx-auto flex h-14 max-w-6xl items-center gap-2 overflow-hidden rounded-full border border-white/10 bg-zinc-950/60 px-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.45)] backdrop-blur-md sm:px-2">
           <button
             type="button"
-            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+            className="flex min-w-0 flex-1 items-center gap-2.5 rounded-full py-1 pl-1 text-left"
             aria-expanded={expanded}
             aria-label={`Open player for ${track.title}`}
             onClick={() => setExpanded(true)}
@@ -623,102 +617,59 @@ function PersistentPlayerBar() {
               <img
                 src={poster}
                 alt=""
-                className="h-11 w-11 shrink-0 rounded-md object-cover"
+                className="h-10 w-10 shrink-0 rounded-md object-cover"
               />
             ) : (
-              <div className="h-11 w-11 shrink-0 rounded-md bg-zinc-800" />
+              <div className="h-10 w-10 shrink-0 rounded-md bg-zinc-800" />
             )}
-            <span className="min-w-0 flex-1">
+            <span className="min-w-0">
               <span className="block truncate text-sm font-medium">{track.title}</span>
               {playback.error ? (
-                <span className="block truncate text-xs text-red-300">{playback.error}</span>
-              ) : (
-                <span className="block truncate text-xs text-muted-foreground">
-                  {playback.playing ? 'Playing' : 'Paused'}
+                <span className="block truncate text-xs text-red-300">
+                  {playback.error}
                 </span>
-              )}
+              ) : collectionName ? (
+                <span className="block truncate text-xs text-muted-foreground">
+                  {collectionName}
+                </span>
+              ) : null}
             </span>
           </button>
-          <div className="flex shrink-0 items-center gap-1">
-            <BarButton
-              label="Previous"
+          <div className="flex shrink-0 items-center gap-1 pr-0.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="size-8 rounded-full bg-transparent text-cyan-500 shadow-none touch-manipulation hover:bg-white/10 hover:text-cyan-400"
+              aria-label={playback.playing ? 'Pause' : 'Play'}
+              onClick={(event) => {
+                event.stopPropagation();
+                playback.toggle();
+              }}
+            >
+              {playback.playing ? (
+                <Pause className="size-3.5 fill-current" aria-hidden />
+              ) : (
+                <Play className="size-3.5 fill-current" aria-hidden />
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="size-8 rounded-full bg-transparent text-cyan-500 shadow-none touch-manipulation hover:bg-white/10 hover:text-cyan-400"
+              aria-label="Next"
               disabled={!canSkip}
-              onClick={playback.previous}
+              onClick={(event) => {
+                event.stopPropagation();
+                playback.next();
+              }}
             >
-              <SkipIcon direction="back" />
-            </BarButton>
-            <BarButton
-              label={playback.playing ? 'Pause' : 'Play'}
-              onClick={playback.toggle}
-            >
-              {playback.playing ? <PauseIcon /> : <PlayIcon />}
-            </BarButton>
-            <BarButton label="Next" disabled={!canSkip} onClick={playback.next}>
-              <SkipIcon direction="forward" />
-            </BarButton>
-            <BarButton
-              label="Loop"
-              pressed={loopOn}
-              onClick={() => playback.setLoop(!loopOn)}
-            >
-              <Repeat className="size-4" aria-hidden />
-            </BarButton>
+              <SkipForward className="size-3.5 fill-current" aria-hidden />
+            </Button>
           </div>
         </div>
-    </div>
+      </div>
     </>
-  );
-}
-
-function BarButton({
-  label,
-  disabled,
-  pressed,
-  onClick,
-  children,
-}: {
-  label: string;
-  disabled?: boolean;
-  pressed?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={pressed}
-      disabled={disabled}
-      onClick={onClick}
-      className={`inline-flex size-9 items-center justify-center rounded-full text-[#00f2ff] hover:bg-white/10 disabled:opacity-40 [&_svg]:size-4 ${pressed === false ? 'opacity-45' : ''}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function PlayIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-4 fill-current" aria-hidden>
-      <path d="M8 5v14l11-7z" />
-    </svg>
-  );
-}
-
-function PauseIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-4 fill-current" aria-hidden>
-      <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
-    </svg>
-  );
-}
-
-function SkipIcon({ direction }: { direction: 'back' | 'forward' }) {
-  const path =
-    direction === 'back' ? 'M6 6h2v12H6zm3.5 6 8.5 6V6z' : 'M6 18l8.5-6L6 6v12zM16 6h2v12h-2z';
-  return (
-    <svg viewBox="0 0 24 24" className="size-4 fill-current" aria-hidden>
-      <path d={path} />
-    </svg>
   );
 }
