@@ -135,7 +135,7 @@ function artworkType(url: string): string | undefined {
 function applyLockScreenMetadata(track: DashboardTrack) {
   if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
   const title = track.title?.trim() || 'Track';
-  const artist = track.album_title?.trim() || '';
+  const artist = 'VIYAC';
   const artworkHref = lockScreenArtForTrack(track);
   const artwork = artworkHref
     ? [
@@ -155,7 +155,7 @@ function applyLockScreenMetadata(track: DashboardTrack) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title,
       artist,
-      album: artist,
+      album: '',
       artwork,
     });
   } catch {
