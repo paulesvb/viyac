@@ -179,10 +179,6 @@
     "en": "All rights reserved.",
     "es": "Todos los derechos reservados."
   },
-  "ctaBrowseCollectionsSignIn": {
-    "en": "Browse collections — sign in to listen.",
-    "es": "Explora colecciones — inicia sesión para escuchar."
-  },
   "ctaDismissPermanently": {
     "en": "Got it",
     "es": "Entendido"
@@ -324,12 +320,12 @@
     "es": "Nuevo · Genesis · Inner Circle"
   },
   "sectionMoreFeaturedTracks": {
-    "en": "More featured tracks",
-    "es": "Más temas destacados"
+    "en": "Featured Tracks",
+    "es": "Temas destacados"
   },
   "sectionMoreTracks": {
-    "en": "More tracks",
-    "es": "Más temas"
+    "en": "On this Collection",
+    "es": "En esta colección"
   },
   "labelTrackSingular": {
     "en": "track",

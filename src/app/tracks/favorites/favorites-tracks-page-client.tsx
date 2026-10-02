@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { CatalogPlayer } from '@/components/CatalogPlayer';
 import { useTranslate } from '@/hooks/use-translate';
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
@@ -11,7 +11,6 @@ type Props = {
 
 export default function FavoritesTracksPageClient({ tracks }: Props) {
   const t = useTranslate();
-  const [loopFavorites, setLoopFavorites] = useState(false);
 
   const playable = useMemo(
     () => tracks.filter((track) => track.catalog_track_id),
@@ -59,9 +58,7 @@ export default function FavoritesTracksPageClient({ tracks }: Props) {
           defaultTrack={defaultTrack}
           queueEnabled
           gateAutoplayUntilPick
-          loop={loopFavorites}
-          onLoopChange={setLoopFavorites}
-          showTransportControls
+          showNowPlayingStage={false}
           headingIdle={t('pageFavoritesTitle')}
           headingPlaying={t('badgeNowPlaying')}
           listTracks={playable}

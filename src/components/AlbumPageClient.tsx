@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { CatalogPlayer } from '@/components/CatalogPlayer';
 import { useTranslate } from '@/hooks/use-translate';
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
@@ -19,7 +18,6 @@ export function AlbumPageClient({
   tracks,
 }: Props) {
   const t = useTranslate();
-  const [loopAlbum, setLoopAlbum] = useState(false);
   const firstTrack = tracks[0] ?? null;
 
   return (
@@ -53,9 +51,7 @@ export function AlbumPageClient({
           tracks={tracks}
           defaultTrack={firstTrack}
           queueEnabled={tracks.length > 1}
-          loop={loopAlbum}
-          onLoopChange={setLoopAlbum}
-          showTransportControls
+          showNowPlayingStage={false}
           headingIdle={t('badgeFromCollection')}
           headingPlaying={t('badgeNowPlaying')}
           listTracks={tracks}

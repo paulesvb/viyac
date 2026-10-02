@@ -1,9 +1,13 @@
 'use client';
 
-import { DashboardFeaturedMarquee } from '@/components/DashboardFeaturedMarquee';
+import { useEffect } from 'react';
+
 import { DashboardMoreTrackRow } from '@/components/DashboardMoreTrackRow';
 import { PlaybackControlsCard } from '@/components/PlaybackControlsCard';
-import { useCatalogPlaybackQueue } from '@/hooks/use-catalog-playback-queue';
+import {
+  samePlaybackQueue,
+  usePlayback,
+} from '@/components/persistent-playback/playback-context';
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
 import { dashboardTracksMatch } from '@/lib/dashboard-tracks';
 import { getTrackPosterUrl } from '@/lib/track-poster-url';
@@ -15,7 +19,7 @@ type Props = {
   defaultTrack: DashboardTrack | null;
   /** Advance at end / transport next when true (default: multi-track lists). */
   queueEnabled?: boolean;
-  /** No autoplay until the user taps a row (home featured preview). */
+  /** Kept for call sites. The persistent engine never autoplays on page load. */
   gateAutoplayUntilPick?: boolean;
   loop?: boolean;
   onLoopChange?: (enabled: boolean) => void;
@@ -23,6 +27,10 @@ type Props = {
   showTransportControls?: boolean;
   /** When true, the transport card renders under the player instead of above it. */
   transportControlsBelow?: boolean;
+  /** When true, the transport card renders under the section title and above the track cards. */
+  transportControlsAfterList?: boolean;
+  /** Poster and title block above the list. Home uses the bottom player instead. */
+  showNowPlayingStage?: boolean;
   /** Marquee pill when idle / after user pick. */
   headingIdle: string;
   headingPlaying: string;
@@ -31,7 +39,7 @@ type Props = {
   listSectionTitle?: string;
   listSectionId?: string;
   onPlayingChange?: (playing: boolean) => void;
-  /** Split layout: parent owns transport and passes control nonces. */
+  /** Unused while playback lives in the layout. Kept so existing pages still type-check. */
   playbackControlAction?: 'toggle' | 'stop' | 'previous' | 'next';
   playbackControlNonce?: number;
   isPlaying?: boolean;
@@ -43,105 +51,108 @@ export function CatalogPlayer({
   tracks,
   defaultTrack,
   queueEnabled = tracks.length > 1,
-  gateAutoplayUntilPick = false,
   loop = false,
   onLoopChange,
   showTransportControls = false,
   transportControlsBelow = false,
+  transportControlsAfterList = false,
+  showNowPlayingStage = true,
   headingIdle,
   headingPlaying,
   listTracks,
   listSectionTitle,
   listSectionId = 'catalog-player-tracks',
   onPlayingChange,
-  playbackControlAction: externalControlAction,
-  playbackControlNonce: externalControlNonce = 0,
-  isPlaying: externalIsPlaying,
   onPlaybackToggle,
   className,
 }: Props) {
-  const externalPlaybackControl =
-    externalControlAction !== undefined
-      ? { action: externalControlAction, nonce: externalControlNonce }
-      : undefined;
+  const playback = usePlayback();
+  const session = playback.session;
+  const ownsQueue = session != null && samePlaybackQueue(session.tracks, tracks);
+  const current = ownsQueue ? (session.tracks[session.index] ?? null) : null;
+  const stageTrack = current ?? (session ? null : defaultTrack);
+  const playingHere = ownsQueue && playback.playing;
+  const loopEnabled = ownsQueue && session ? session.loop : loop;
 
-  const queue = useCatalogPlaybackQueue({
-    tracks,
-    defaultTrack,
-    queueEnabled,
-    gateAutoplayUntilPick,
-    loop,
-    onLoopChange,
-    onPlayingChange,
-    externalPlaybackControl,
-  });
+  useEffect(() => {
+    if (!ownsQueue) return;
+    onPlayingChange?.(playback.playing);
+  }, [ownsQueue, onPlayingChange, playback.playing]);
 
-  const {
-    playerTrack,
-    hasUserPick,
-    isPlaying,
-    repeatOne,
-    setRepeatOne,
-    handleRowPlayback,
-    runPlaybackControl,
-    skipToNext,
-    skipToPrevious,
-    effectiveAutoPlayNonce,
-    playerControlAction,
-    playbackControlNonce,
-    handlePlayingChange,
-    vaultQueueProps,
-  } = queue;
-
-  const controlAction = playerControlAction;
-  const controlNonce = playbackControlNonce;
-  const playing = externalIsPlaying ?? isPlaying;
-
-  const handleRowClick = (track: DashboardTrack) => {
-    if (onPlaybackToggle && playerTrack && dashboardTracksMatch(track, playerTrack)) {
-      onPlaybackToggle();
-    } else {
-      handleRowPlayback(track);
-    }
+  const startTrack = (track: DashboardTrack) => {
+    playback.playQueue(tracks, track, { loop, queueEnabled });
   };
 
-  if (!playerTrack) return null;
+  const handleRowClick = (track: DashboardTrack) => {
+    if (ownsQueue && current && dashboardTracksMatch(track, current)) {
+      if (onPlaybackToggle) onPlaybackToggle();
+      else playback.toggle();
+      return;
+    }
+    startTrack(track);
+  };
 
+  if (tracks.length === 0 && !stageTrack) return null;
+
+  const poster = stageTrack ? getTrackPosterUrl(stageTrack) : null;
   const rows = listTracks ?? tracks;
   const showTrackList =
     rows.length > 0 && (listTracks !== undefined || Boolean(listSectionTitle));
 
   const transportControls = showTransportControls ? (
     <PlaybackControlsCard
-      isPlaying={playing}
-      loopEnabled={loop}
-      onPrevious={queueEnabled ? skipToPrevious : undefined}
-      onNext={queueEnabled ? skipToNext : undefined}
-      onPlayPause={() => runPlaybackControl('toggle')}
-      onStop={() => runPlaybackControl('stop')}
-      onLoopChange={onLoopChange ?? (() => {})}
+      isPlaying={playingHere}
+      loopEnabled={loopEnabled}
+      onPrevious={queueEnabled && ownsQueue ? playback.previous : undefined}
+      onNext={queueEnabled && ownsQueue ? playback.next : undefined}
+      onPlayPause={() => {
+        if (ownsQueue) playback.toggle();
+        else if (defaultTrack) startTrack(defaultTrack);
+      }}
+      onStop={() => {
+        if (ownsQueue) playback.stop();
+      }}
+      onLoopChange={(enabled) => {
+        onLoopChange?.(enabled);
+        if (ownsQueue) playback.setLoop(enabled);
+      }}
     />
   ) : null;
 
   return (
     <div className={className ?? 'space-y-8'}>
-      {transportControlsBelow ? null : transportControls}
+      {transportControlsBelow || transportControlsAfterList
+        ? null
+        : transportControls}
 
-      <div className="w-full min-w-0 sm:flex-1">
-        <DashboardFeaturedMarquee
-          track={playerTrack}
-          headingLabel={hasUserPick ? headingPlaying : headingIdle}
-          autoPlayNonce={effectiveAutoPlayNonce}
-          {...vaultQueueProps}
-          playbackControlAction={controlAction}
-          playbackControlNonce={controlNonce}
-          onPlayingChange={handlePlayingChange}
-          repeatOneEnabled={queueEnabled ? repeatOne : undefined}
-          onRepeatOneChange={queueEnabled ? setRepeatOne : undefined}
-        />
-      </div>
+      {showNowPlayingStage && stageTrack ? (
+        <section className="overflow-hidden rounded-xl border border-cyan-500/25 bg-zinc-950">
+          <div className="flex items-center gap-4 p-4">
+            {poster ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={poster}
+                alt=""
+                className="h-20 w-20 shrink-0 rounded-md object-cover sm:h-24 sm:w-24"
+              />
+            ) : (
+              <div className="h-20 w-20 shrink-0 rounded-md bg-zinc-800 sm:h-24 sm:w-24" />
+            )}
+            <div className="min-w-0">
+              <span className="rounded-full bg-cyan-400/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-cyan-300">
+                {ownsQueue ? headingPlaying : headingIdle}
+              </span>
+              <h2 className="mt-2 truncate text-lg font-semibold tracking-tight">
+                {stageTrack.title}
+              </h2>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
-      {transportControlsBelow ? transportControls : null}
+      {transportControlsBelow && !transportControlsAfterList
+        ? transportControls
+        : null}
 
       {showTrackList ? (
         <section
@@ -157,6 +168,7 @@ export function CatalogPlayer({
               {listSectionTitle}
             </h2>
           ) : null}
+          {transportControlsAfterList ? transportControls : null}
           <ul className="grid min-w-0 gap-3 sm:grid-cols-2">
             {rows.map((track) => (
               <li
@@ -167,9 +179,9 @@ export function CatalogPlayer({
                   track={track}
                   posterUrl={getTrackPosterUrl(track)}
                   isActive={
-                    playerTrack != null && dashboardTracksMatch(track, playerTrack)
+                    current != null && dashboardTracksMatch(track, current)
                   }
-                  isPlaying={playing}
+                  isPlaying={playingHere}
                   onPlayInPlayer={() => handleRowClick(track)}
                 />
               </li>

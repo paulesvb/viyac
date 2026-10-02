@@ -6,7 +6,7 @@ import { useCampaignHref } from '@/hooks/use-campaign-href';
 import { useTranslate } from '@/hooks/use-translate';
 
 const siteFooterLinks = [
-  { key: 'about' as const, labelKey: 'navAbout' as const },
+  { key: 'about' as const, labelKey: 'navBehindViyac' as const },
   { key: 'legal' as const, labelKey: 'navLegal' as const },
 ] as const;
 

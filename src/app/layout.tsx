@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
 import "./globals.css";
 import { ClerkRootProvider } from "@/components/ClerkRootProvider";
+import { PlaybackProvider } from "@/components/persistent-playback/playback-context";
 import { NavbarWrapper } from "@/components/NavbarWrapper";
 import { DocumentLang } from "@/components/DocumentLang";
 import { ConsoleBrand } from "@/components/ConsoleBrand";
@@ -60,10 +61,12 @@ export default function RootLayout({
       >
         <Suspense fallback={null}>
           <ClerkRootProvider>
-            <DocumentLang />
-            <NavbarWrapper />
-            <main className="flex-1">{children}</main>
-            <SiteFooter />
+            <PlaybackProvider>
+              <DocumentLang />
+              <NavbarWrapper />
+              <main className="flex-1">{children}</main>
+              <SiteFooter />
+            </PlaybackProvider>
           </ClerkRootProvider>
         </Suspense>
         <Analytics />

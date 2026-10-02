@@ -59,7 +59,6 @@ export default function DashboardPageClient({
     () => getFeaturedDashboardTrackFromList(homeTracks),
     [homeTracks],
   );
-  const [loopHome, setLoopHome] = useState(false);
   const [introVisible, setIntroVisible] = useState(showIntroCard);
   const [dismissingIntro, startDismissingIntro] = useTransition();
 
@@ -74,23 +73,11 @@ export default function DashboardPageClient({
   const { signupHref } = useAuthHref();
   const t = useTranslate();
   const lang = useBrowserLanguage();
-  const { homeHref, aboutHref } = useCampaignHref();
-  const homeTitle = t('navHome');
+  const { homeHref } = useCampaignHref();
 
   return (
     <div className="min-w-0 w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6 sm:space-y-8">
-      <header className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          {homeTitle}
-        </h1>
-        {!isSignedIn ? (
-          <Button variant="outline" size="sm" asChild className="shrink-0">
-            <Link href={aboutHref}>{t('navBehindViyac')}</Link>
-          </Button>
-        ) : null}
-      </header>
-
       {introVisible ? (
         isSignedIn ? (
           <Card className="border-cyan-500/25 bg-card/95">
@@ -176,10 +163,7 @@ export default function DashboardPageClient({
           defaultTrack={catalogFeatured}
           queueEnabled={homeTracks.length > 1}
           gateAutoplayUntilPick
-          loop={loopHome}
-          onLoopChange={setLoopHome}
-          showTransportControls
-          transportControlsBelow
+          showNowPlayingStage={false}
           headingIdle={t('badgeFeatured')}
           headingPlaying={t('badgeNowPlaying')}
           listTracks={homeTracks}
@@ -229,11 +213,6 @@ export default function DashboardPageClient({
           >
             {t('navCollections')}
           </h2>
-          {!isSignedIn ? (
-            <p className="text-sm text-muted-foreground">
-              {t('ctaBrowseCollectionsSignIn')}
-            </p>
-          ) : null}
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {albums.map((album) => {
               const coverUrl = getAlbumCoverUrl(album);
