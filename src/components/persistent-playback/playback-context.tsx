@@ -19,6 +19,7 @@ import { useCatalogListenHeartbeat } from '@/hooks/use-catalog-listen-heartbeat'
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
 import { indexOfCatalogTrack } from '@/lib/dashboard-tracks';
 import { getTrackPosterUrl } from '@/lib/track-poster-url';
+import { resolvePublicAssetsUrl } from '@/lib/storage';
 import { vaultStreamUrl } from '@/lib/vault-stream';
 
 export type PlaybackSession = {
@@ -84,6 +85,86 @@ function trackAt(session: PlaybackSession | null): DashboardTrack | null {
   return session.tracks[session.index] ?? null;
 }
 
+/** Helps iOS pick up new artwork when the storage path changes. */
+function withLockScreenArtCacheBust(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const key = parsed.pathname.replace(/[^\w-]+/g, '').slice(-48) || 'art';
+    if (!parsed.searchParams.has('v')) {
+      parsed.searchParams.set('v', key);
+    }
+    return parsed.href;
+  } catch {
+    return url;
+  }
+}
+
+function lockScreenArtForTrack(track: DashboardTrack): string | null {
+  const raw =
+    track.lock_screen_art_path?.trim() ||
+    track.thumbnail_url?.trim() ||
+    process.env.NEXT_PUBLIC_MEDIA_SESSION_ART_URL?.trim() ||
+    '';
+  if (!raw) return null;
+  let absolute: string;
+  try {
+    absolute = resolvePublicAssetsUrl(raw);
+  } catch {
+    return null;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      absolute = new URL(absolute, window.location.href).href;
+    } catch {
+      /* keep the resolved URL */
+    }
+  }
+  return withLockScreenArtCacheBust(absolute);
+}
+
+function artworkType(url: string): string | undefined {
+  const path = url.split('?')[0]?.toLowerCase() ?? '';
+  if (path.endsWith('.png')) return 'image/png';
+  if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
+  if (path.endsWith('.webp')) return 'image/webp';
+  return undefined;
+}
+
+function applyLockScreenMetadata(track: DashboardTrack) {
+  if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+  const title = track.title?.trim() || 'Track';
+  const artist = track.album_title?.trim() || '';
+  const artworkHref = lockScreenArtForTrack(track);
+  const artwork = artworkHref
+    ? [
+        {
+          src: artworkHref,
+          sizes: '512x512',
+          type: artworkType(artworkHref),
+        },
+        {
+          src: artworkHref,
+          sizes: '256x256',
+          type: artworkType(artworkHref),
+        },
+      ]
+    : [];
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title,
+      artist,
+      album: artist,
+      artwork,
+    });
+  } catch {
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({ title, artist });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export function PlaybackProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [media, setMedia] = useState<HTMLAudioElement | null>(null);
@@ -144,6 +225,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     }
 
     if (index === currentSession.index) return;
+    const nextTrack = currentSession.tracks[index];
+    if (nextTrack) applyLockScreenMetadata(nextTrack);
     setSession({ ...currentSession, index });
     setIntentPlaying(true);
     setCurrentTime(0);
@@ -161,6 +244,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       if (tracks.length === 0) return;
       const found = indexOfCatalogTrack(tracks, start);
       const index = found >= 0 ? found : 0;
+      const starting = tracks[index];
+      if (starting) applyLockScreenMetadata(starting);
       setSession((prev) => {
         const loop = options?.loop ?? prev?.loop ?? false;
         const queueEnabled = options?.queueEnabled ?? tracks.length > 1;
@@ -330,6 +415,107 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       media.pause();
     }
   }, [intentPlaying, path]);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const ms = navigator.mediaSession;
+    const media = audioRef.current;
+
+    if (!current) {
+      try {
+        ms.metadata = null;
+        ms.playbackState = 'none';
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+
+    applyLockScreenMetadata(current);
+    ms.playbackState = playing ? 'playing' : 'paused';
+
+    const syncPosition = () => {
+      if (!media || typeof ms.setPositionState !== 'function') return;
+      const length = media.duration;
+      if (!Number.isFinite(length) || length <= 0) return;
+      const position = Math.min(Math.max(0, media.currentTime), length);
+      try {
+        ms.setPositionState({
+          duration: length,
+          playbackRate: media.playbackRate || 1,
+          position,
+        });
+      } catch {
+        /* Safari throws when the state is invalid */
+      }
+    };
+
+    ms.setActionHandler?.('play', () => {
+      setIntentPlaying(true);
+      void media?.play().catch(() => {});
+    });
+    ms.setActionHandler?.('pause', () => {
+      setIntentPlaying(false);
+      media?.pause();
+    });
+    ms.setActionHandler?.('previoustrack', () => {
+      advanceRef.current(-1);
+    });
+    ms.setActionHandler?.('nexttrack', () => {
+      advanceRef.current(1);
+    });
+    ms.setActionHandler?.('seekbackward', (details) => {
+      if (!media) return;
+      const delta = details.seekOffset ?? 15;
+      media.currentTime = Math.max(0, media.currentTime - delta);
+      syncPosition();
+    });
+    ms.setActionHandler?.('seekforward', (details) => {
+      if (!media) return;
+      const delta = details.seekOffset ?? 15;
+      const end = Number.isFinite(media.duration)
+        ? media.duration
+        : media.currentTime + delta;
+      media.currentTime = Math.min(end, media.currentTime + delta);
+      syncPosition();
+    });
+    ms.setActionHandler?.('seekto', (details) => {
+      if (!media || details.seekTime == null || !Number.isFinite(details.seekTime)) return;
+      const length = media.duration;
+      media.currentTime = Number.isFinite(length)
+        ? Math.min(Math.max(0, details.seekTime), length)
+        : Math.max(0, details.seekTime);
+      syncPosition();
+    });
+
+    const onPlaying = () => {
+      applyLockScreenMetadata(current);
+      ms.playbackState = 'playing';
+      syncPosition();
+    };
+    const onPause = () => {
+      ms.playbackState = 'paused';
+      syncPosition();
+    };
+
+    media?.addEventListener('playing', onPlaying);
+    media?.addEventListener('pause', onPause);
+    media?.addEventListener('timeupdate', syncPosition);
+    syncPosition();
+
+    return () => {
+      media?.removeEventListener('playing', onPlaying);
+      media?.removeEventListener('pause', onPause);
+      media?.removeEventListener('timeupdate', syncPosition);
+      ms.setActionHandler?.('play', null);
+      ms.setActionHandler?.('pause', null);
+      ms.setActionHandler?.('previoustrack', null);
+      ms.setActionHandler?.('nexttrack', null);
+      ms.setActionHandler?.('seekbackward', null);
+      ms.setActionHandler?.('seekforward', null);
+      ms.setActionHandler?.('seekto', null);
+    };
+  }, [current, playing]);
 
   useCatalogListenHeartbeat({
     catalogTrackId: current?.catalog_track_id?.trim(),
