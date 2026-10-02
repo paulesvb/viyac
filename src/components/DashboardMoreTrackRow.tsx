@@ -1,8 +1,6 @@
 'use client';
 
-import { Pause, Play } from 'lucide-react';
 import { ProvenanceBadge } from '@/components/ProvenanceBadge';
-import { Button } from '@/components/ui/button';
 import type { DashboardTrack } from '@/lib/dashboard-track-types';
 import {
   buildCompactTrackMetaLine,
@@ -39,14 +37,21 @@ export function DashboardMoreTrackRow({
     showProvenance || track.is_single || track.is_instrumental;
 
   return (
-    <div
-      className={`flex min-h-[52px] w-full max-w-full min-w-0 items-stretch overflow-hidden rounded-lg border bg-card ${
+    <button
+      type="button"
+      className={`flex min-h-[52px] w-full max-w-full min-w-0 items-stretch overflow-hidden rounded-lg border bg-card text-left touch-manipulation ${
         showPause
           ? 'border-cyan-500/40 bg-muted/25'
           : isActive
             ? 'border-cyan-500/25'
             : 'border-border'
       }`}
+      aria-label={
+        showPause
+          ? t.params('ctaAriaPauseTrack', { title: track.title })
+          : t.params('ctaAriaPlayTrackFeatured', { title: track.title })
+      }
+      onClick={onPlayInPlayer}
     >
       <div className="flex min-w-0 flex-1 items-stretch gap-2 p-2 sm:gap-3 sm:p-3">
         {posterUrl ? (
@@ -97,29 +102,6 @@ export function DashboardMoreTrackRow({
           ) : null}
         </div>
       </div>
-      <div className="flex shrink-0 flex-col justify-center border-l border-border bg-muted/30 p-1.5 sm:p-2.5">
-        <Button
-          type="button"
-          variant="brand"
-          size="icon"
-          className="size-10 shrink-0 touch-manipulation sm:size-10"
-          aria-label={
-            showPause
-              ? t.params('ctaAriaPauseTrack', { title: track.title })
-              : t.params('ctaAriaPlayTrackFeatured', { title: track.title })
-          }
-          onClick={(e) => {
-            e.stopPropagation();
-            onPlayInPlayer();
-          }}
-        >
-          {showPause ? (
-            <Pause className="size-5 fill-current sm:size-4" aria-hidden />
-          ) : (
-            <Play className="size-5 fill-current sm:size-4" aria-hidden />
-          )}
-        </Button>
-      </div>
-    </div>
+    </button>
   );
 }
