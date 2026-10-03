@@ -85,18 +85,16 @@ export function PersistentPlayerSheet({ track, onClose }: Props) {
           <p className="text-center text-sm text-red-300">{playback.error}</p>
         ) : null}
 
-        <div className="flex items-center justify-center gap-3">
+        <div className="flex w-full items-center justify-center gap-3">
           <SheetButton label="Previous" disabled={!canSkip} onClick={playback.previous}>
             <SkipGlyph direction="back" />
           </SheetButton>
-          <button
-            type="button"
-            aria-label={playback.playing ? 'Pause' : 'Play'}
+          <SheetButton
+            label={playback.playing ? 'Pause' : 'Play'}
             onClick={playback.toggle}
-            className="inline-flex size-14 items-center justify-center rounded-full bg-[#00f2ff] text-zinc-950"
           >
             {playback.playing ? <PauseGlyph /> : <PlayGlyph />}
-          </button>
+          </SheetButton>
           <SheetButton label="Next" disabled={!canSkip} onClick={playback.next}>
             <SkipGlyph direction="forward" />
           </SheetButton>
@@ -270,7 +268,7 @@ function SheetButton({
 
 function PlayGlyph() {
   return (
-    <svg viewBox="0 0 24 24" className="size-6 fill-current" aria-hidden>
+    <svg viewBox="0 0 24 24" className="size-5 fill-current" aria-hidden>
       <path d="M8 5v14l11-7z" />
     </svg>
   );
@@ -278,7 +276,7 @@ function PlayGlyph() {
 
 function PauseGlyph() {
   return (
-    <svg viewBox="0 0 24 24" className="size-6 fill-current" aria-hidden>
+    <svg viewBox="0 0 24 24" className="size-5 fill-current" aria-hidden>
       <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
     </svg>
   );
