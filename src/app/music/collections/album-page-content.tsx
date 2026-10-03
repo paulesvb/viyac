@@ -2,7 +2,6 @@ import { auth } from '@clerk/nextjs/server';
 import { notFound, redirect } from 'next/navigation';
 
 import { AlbumPageClient } from '@/components/AlbumPageClient';
-import { HomeBackLink } from '@/components/HomeBackLink';
 import {
   getAccessibleAlbumWithTracksBySlug,
   getPublicCollectionWithTracksBySlug,
@@ -48,8 +47,6 @@ export async function AlbumPageContent({
   return (
     <div className="min-w-0 w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
-        <HomeBackLink />
-
         <AlbumPageClient
           albumTitle={album.title}
           albumSlug={album.slug}

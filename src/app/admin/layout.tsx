@@ -32,12 +32,6 @@ export default function AdminLayout({
             >
               Shared hides
             </Link>
-            <Link
-              href="/home"
-              className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-            >
-              Home
-            </Link>
           </nav>
         </header>
         {children}

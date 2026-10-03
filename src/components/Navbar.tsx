@@ -42,7 +42,6 @@ function SignedInNav({
   sharedTracksCount = 0,
 }: NavbarProps) {
   const t = useTranslate();
-  const { homeHref } = useCampaignHref();
   const favoritesBadgeLabel =
     favoritesCount > 99 ? '99+' : String(favoritesCount);
   const sharedBadgeLabel =
@@ -50,9 +49,6 @@ function SignedInNav({
 
   return (
     <div className="flex items-center gap-3">
-      <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex">
-        <Link href={homeHref}>{t('navHome')}</Link>
-      </Button>
       {favoritesCount > 0 ? (
         <Button variant="ghost" size="sm" asChild className="hidden sm:inline-flex">
           <Link href="/tracks/favorites" className="inline-flex items-center gap-1.5">

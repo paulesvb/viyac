@@ -50,22 +50,16 @@ export default async function MusicTrackPage({ params, searchParams }: PageProps
 
   return (
     <div className="min-w-0 w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-      <div className="mx-auto mb-6 flex max-w-6xl items-center gap-4 text-sm">
-        {album?.trim() ? (
+      {album?.trim() ? (
+        <div className="mx-auto mb-6 flex max-w-6xl items-center gap-4 text-sm">
           <Link
             href={`/music/collections/${encodeURIComponent(album.trim())}`}
             className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
             ← Back to collection
           </Link>
-        ) : null}
-        <Link
-          href="/home"
-          className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-        >
-          Home
-        </Link>
-      </div>
+        </div>
+      ) : null}
       <div className="w-full min-w-0 space-y-4">
         {track.original_genesis_slug?.trim() ? (
           <div className="mx-auto max-w-6xl rounded-lg border border-border/60 bg-card/40 px-4 py-3 text-sm text-muted-foreground">
