@@ -1,6 +1,6 @@
 'use client';
 
-import { Repeat } from 'lucide-react';
+import { ChevronDown, Repeat } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 
@@ -44,16 +44,16 @@ export function PersistentPlayerSheet({ track, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950">
-      <div className="flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
+      <div className="flex flex-col items-center pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <p className="text-xs uppercase tracking-widest text-cyan-300/80">Now playing</p>
         <button
           type="button"
           onClick={onClose}
-          className="rounded-full px-3 py-1.5 text-sm text-zinc-300 hover:bg-white/10"
+          aria-label="Close"
+          className="mt-1 inline-flex size-9 items-center justify-center rounded-full text-[#00f2ff] hover:bg-white/10"
         >
-          Close
+          <ChevronDown className="size-5" aria-hidden />
         </button>
-        <p className="text-xs uppercase tracking-widest text-cyan-300/80">Now playing</p>
-        <span className="w-14" aria-hidden />
       </div>
 
       <div className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-6 overflow-y-auto px-4 py-6 pb-28">
